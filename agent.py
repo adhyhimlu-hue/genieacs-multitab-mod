@@ -45,6 +45,16 @@ def get_config():
         res[c["_id"]] = val.strip()
     return res
 
+BRAND_NAME = "ALIJAYA NET"
+BRAND_PHONE = "081947215703"
+
+def update_branding(cfgs):
+    global BRAND_NAME, BRAND_PHONE
+    b_name = cfgs.get("agent.brand.name", "").strip()
+    b_phone = cfgs.get("agent.brand.phone", "").strip()
+    BRAND_NAME = b_name if b_name else "ALIJAYA NET"
+    BRAND_PHONE = b_phone if b_phone else "081947215703"
+
 def is_valid_token(val):
     if not val:
         return False
@@ -209,7 +219,7 @@ def get_device_summary(dev):
         f"• *User HP Terkoneksi*: `{clients} perangkat`\n"
         f"• *Hardware*: {mfr} {model} (SN: `{sn}`)\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"👑 *ALIJAYA NET TR-069*"
+        f"👑 *{BRAND_NAME} TR-069*"
     )
     return pppoe, res
 
@@ -504,7 +514,7 @@ def handle_incoming_message(token, chat_id, user_text, gemini_key, model_name):
     if txt in ["/start", "/menu", "❓ Bantuan / Help", "/help"]:
         USER_STATES.pop(chat_id, None)
         welcome = (
-            "🤖 *ALIJAYA NET - GenieACS Telegram Bot*\n"
+            f"🤖 *{BRAND_NAME} - GenieACS Telegram Bot*\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             "Gunakan tombol menu di bawah untuk aksi cepat, atau ketik perintah langsung:\n\n"
             "📌 *Perintah Cepat:*\n"
@@ -516,7 +526,7 @@ def handle_incoming_message(token, chat_id, user_text, gemini_key, model_name):
             "• `/reboot <user>` ➔ Restart modem pelanggan\n"
             "• `/server` ➔ Status performa STB\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            "👑 *Pengembang: ALIJAYA NET (081947215703)*"
+            f"👑 *Pengembang / CS: {BRAND_NAME} ({BRAND_PHONE})*"
         )
         send_telegram(token, chat_id, welcome, reply_markup=get_main_menu_keyboard())
         return
@@ -761,6 +771,7 @@ def main():
     while True:
         try:
             cfgs = get_config()
+            update_branding(cfgs)
             enabled = cfgs.get("agent.enabled", "true").lower() == "true"
             token = cfgs.get("agent.telegram.botToken", "")
             admin_chat_id = cfgs.get("agent.telegram.adminChatId", "")
@@ -781,14 +792,14 @@ def main():
                 register_bot_commands(token)
                 if is_valid_token(admin_chat_id):
                     greeting = (
-                        "🚀 *ALIJAYA NET GenieACS Bot Aktif!*\n"
+                        f"🚀 *{BRAND_NAME} GenieACS Bot Aktif!*\n"
                         "━━━━━━━━━━━━━━━━━━━━\n"
                         "Menu interaktif, tombol cepat & fitur Add WAN siap digunakan.\n"
                         "Ketik `/menu` atau klik tombol di bawah untuk mulai."
                     )
                     send_telegram(token, admin_chat_id, greeting, reply_markup=get_main_menu_keyboard())
                 notified_online = True
-                logger.info("Bot Telegram berhasil terhubung dan siap melayani!")
+                logger.info(f"Bot Telegram berhasil terhubung dan siap melayani ({BRAND_NAME})!")
 
             poll_url = f"https://api.telegram.org/bot{token}/getUpdates?offset={last_update_id + 1}&timeout=15"
             r = requests.get(poll_url, timeout=20)
@@ -803,7 +814,7 @@ def main():
                         cb_sender = str(cb.get("from", {}).get("id", ""))
                         cb_data = cb.get("data", "")
                         if is_valid_token(admin_chat_id) and cb_sender != admin_chat_id:
-                            answer_callback(token, cb_id, "Akses ditolak!", show_alert=True)
+                            answer_callback(token, cb_id, f"Akses ditolak! Bukan Admin {BRAND_NAME}.", show_alert=True)
                             continue
                         handle_callback_query(token, cb_sender, cb_data, cb_id)
                         continue
@@ -815,7 +826,7 @@ def main():
                     
                     if is_valid_token(admin_chat_id) and sender_id != admin_chat_id:
                         logger.warning(f"Unauthorized chat from {sender_id}: {text}")
-                        send_telegram(token, sender_id, "⛔ Akses Ditolak: Anda bukan Admin ALIJAYA NET.")
+                        send_telegram(token, sender_id, f"⛔ Akses Ditolak: Anda bukan Admin {BRAND_NAME}.")
                         continue
                         
                     if text:

@@ -164,7 +164,7 @@ Cukup jalankan satu perintah ini di terminal server Anda:
 ```bash
 set-bot
 ```
-Masukkan Token Bot Telegram, Chat ID, dan API Key Gemini Anda secara langsung tanpa perlu pusing dengan tanda petik. Script akan otomatis memvalidasi, menyimpan ke database, dan mengaktifkan bot seketika!
+Masukkan Token Bot Telegram, Chat ID, API Key Gemini, Nama Brand (ISP/RT-RW Net Anda), serta Nomor WhatsApp CS secara langsung tanpa perlu pusing dengan tanda petik. Script akan otomatis memvalidasi, menyimpan ke database, dan mengaktifkan bot seketika!
 
 #### CARA 2 (Melalui GenieACS Web UI):
 1. Masuk ke Web UI GenieACS ➔ menu **Admin** ➔ **Config** (`http://<IP-SERVER>:3000/#!/config`).
@@ -174,7 +174,9 @@ Masukkan Token Bot Telegram, Chat ID, dan API Key Gemini Anda secara langsung ta
    * `agent.telegram.botToken` : `'1938127147:AAFMD7X_xxxxxxxxxxxxxxumkVwbZU'` *(wajib dengan tanda petik)*
    * `agent.telegram.adminChatId` : `'56xxxxx28'`
    * `agent.gemini.apiKey` : `'AIzaSyD...'`
-5. Klik tombol **Save**. Bot Agent akan langsung mendeteksi dan aktif!
+   * `agent.brand.name` : `'ALIJAYA NET'` *(bisa diubah sesuai nama usaha/RT-RW Net Anda)*
+   * `agent.brand.phone` : `'081947215703'` *(nomor WhatsApp/CS yang tampil di pesan Telegram)*
+5. Klik tombol **Save**. Bot Agent akan langsung mendeteksi perubahan nama brand dan nomor kontak Anda tanpa perlu restart!
 
 ---
 

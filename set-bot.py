@@ -53,6 +53,8 @@ def main():
     curr_token = ""
     curr_chat = ""
     curr_gemini = ""
+    curr_brand = "ALIJAYA NET"
+    curr_phone = "081947215703"
 
     doc_token = db.config.find_one({"_id": "agent.telegram.botToken"})
     if doc_token: curr_token = clean_val(doc_token.get("value"))
@@ -63,10 +65,20 @@ def main():
     doc_gemini = db.config.find_one({"_id": "agent.gemini.apiKey"})
     if doc_gemini: curr_gemini = clean_val(doc_gemini.get("value"))
 
+    doc_brand = db.config.find_one({"_id": "agent.brand.name"})
+    if doc_brand and clean_val(doc_brand.get("value")):
+        curr_brand = clean_val(doc_brand.get("value"))
+
+    doc_phone = db.config.find_one({"_id": "agent.brand.phone"})
+    if doc_phone and clean_val(doc_phone.get("value")):
+        curr_phone = clean_val(doc_phone.get("value"))
+
     print("\nKonfigurasi Saat Ini:")
     print(f"  • Token Bot Telegram : {mask_val(curr_token)}")
     print(f"  • Chat ID Admin      : {curr_chat if curr_chat else '(Belum Disetting)'}")
     print(f"  • Gemini API Key     : {mask_val(curr_gemini)}")
+    print(f"  • Nama Brand/Usaha   : {curr_brand}")
+    print(f"  • Nomor WhatsApp/CS  : {curr_phone}")
     print("\nPetunjuk: Langsung ketik/paste nilai baru. (Tekan ENTER jika tidak ingin mengubah)")
     print("─" * 68)
 
@@ -74,6 +86,8 @@ def main():
         new_token = input(f"1. Masukkan Token Bot Telegram [{mask_val(curr_token)}]: ").strip().strip("'\"")
         new_chat = input(f"2. Masukkan Chat ID Admin [{curr_chat if curr_chat else '-'}]: ").strip().strip("'\"")
         new_gemini = input(f"3. Masukkan Gemini API Key [{mask_val(curr_gemini)}]: ").strip().strip("'\"")
+        new_brand = input(f"4. Masukkan Nama Brand/Usaha [{curr_brand}]: ").strip().strip("'\"")
+        new_phone = input(f"5. Masukkan No. WhatsApp/CS [{curr_phone}]: ").strip().strip("'\"")
     except (KeyboardInterrupt, EOFError):
         print("\n\nOperasi dibatalkan.")
         sys.exit(0)
@@ -93,6 +107,16 @@ def main():
     if new_gemini:
         db.config.update_one({"_id": "agent.gemini.apiKey"}, {"$set": {"value": f'"{new_gemini}"'}}, upsert=True)
         print("  ✔ Gemini API Key berhasil diperbarui.")
+        updated = True
+
+    if new_brand:
+        db.config.update_one({"_id": "agent.brand.name"}, {"$set": {"value": f'"{new_brand}"'}}, upsert=True)
+        print("  ✔ Nama Brand berhasil diperbarui.")
+        updated = True
+
+    if new_phone:
+        db.config.update_one({"_id": "agent.brand.phone"}, {"$set": {"value": f'"{new_phone}"'}}, upsert=True)
+        print("  ✔ Nomor WhatsApp/CS berhasil diperbarui.")
         updated = True
 
     # Pastikan agent.enabled bernilai true
