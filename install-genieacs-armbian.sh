@@ -280,14 +280,21 @@ if [ -n "$BACKUP_ARCHIVE" ] && [ -f "$BACKUP_ARCHIVE" ]; then
   mkdir -p "$TMP_RESTORE_DIR"
   tar -xzf "$BACKUP_ARCHIVE" -C "$TMP_RESTORE_DIR"
   
-  if [ -x /usr/bin/mongorestore ]; then
-    /usr/bin/mongorestore --uri="mongodb://genie:genie@127.0.0.1:27017/genieacs" --drop "$TMP_RESTORE_DIR/genieacs"
-    echo -e "${GREEN}[OK] Database GenieACS berhasil di-restore 100% siap pakai!${NC}"
-  elif command -v mongorestore >/dev/null 2>&1; then
-    mongorestore --uri="mongodb://genie:genie@127.0.0.1:27017/genieacs" --drop "$TMP_RESTORE_DIR/genieacs"
-    echo -e "${GREEN}[OK] Database GenieACS berhasil di-restore 100% siap pakai!${NC}"
+  RESTORE_OK=0
+  if command -v mongorestore >/dev/null 2>&1; then
+    if mongorestore --uri="mongodb://genie:genie@127.0.0.1:27017/genieacs" --drop "$TMP_RESTORE_DIR/genieacs" >/dev/null 2>&1; then
+      RESTORE_OK=1
+    elif mongorestore --uri="mongodb://127.0.0.1:27017/genieacs" --drop "$TMP_RESTORE_DIR/genieacs" >/dev/null 2>&1; then
+      RESTORE_OK=1
+    elif mongorestore --drop "$TMP_RESTORE_DIR/genieacs" >/dev/null 2>&1; then
+      RESTORE_OK=1
+    fi
+  fi
+  
+  if [ "$RESTORE_OK" -eq 1 ]; then
+    echo -e "${GREEN}[OK] Database GenieACS berhasil di-restore 100% siap pakai! (Virtual Parameters, Presets, Provisions)${NC}"
   else
-    echo -e "${RED}[WARNING] mongorestore tidak ditemukan. Melewati restore database.${NC}"
+    echo -e "${RED}[WARNING] Gagal me-restore database otomatis. Silakan jalankan 'bash apply-template.sh' nanti.${NC}"
   fi
   rm -rf "$TMP_RESTORE_DIR"
 else
@@ -296,7 +303,33 @@ fi
 
 # 5. Instalasi Paket GenieACS via NPM
 echo -e "\n${BLUE}[4/7] Menginstall GenieACS secara global via NPM...${NC}"
+# Pastikan npm menginstall ke /usr prefix agar binary masuk langsung ke /usr/bin
+/usr/bin/npm install -g genieacs@1.2.13 --unsafe-perm=true --prefix /usr 2>/dev/null || \
+npm install -g genieacs@1.2.13 --unsafe-perm=true --prefix /usr 2>/dev/null || \
 npm install -g genieacs@1.2.13 --unsafe-perm=true
+
+# Pastikan symlink binary genieacs-* selalu ada di /usr/bin/ dan /usr/local/bin/
+for mod in "cwmp" "nbi" "fs" "ui"; do
+  BIN_LOC=""
+  if [ -x "/usr/bin/genieacs-${mod}" ]; then
+    BIN_LOC="/usr/bin/genieacs-${mod}"
+  elif [ -x "/usr/local/bin/genieacs-${mod}" ]; then
+    BIN_LOC="/usr/local/bin/genieacs-${mod}"
+  else
+    BIN_LOC=$(find /usr /root/.nvm /opt -name "genieacs-${mod}" 2>/dev/null | head -n 1)
+  fi
+  
+  if [ -n "$BIN_LOC" ]; then
+    [ "$BIN_LOC" != "/usr/bin/genieacs-${mod}" ] && ln -sf "$BIN_LOC" "/usr/bin/genieacs-${mod}"
+    [ "$BIN_LOC" != "/usr/local/bin/genieacs-${mod}" ] && ln -sf "$BIN_LOC" "/usr/local/bin/genieacs-${mod}"
+  fi
+  chmod +x "/usr/bin/genieacs-${mod}" 2>/dev/null || true
+done
+
+# Pastikan node binary juga ada di /usr/bin/node
+if [ ! -x /usr/bin/node ] && command -v node >/dev/null 2>&1; then
+  ln -sf $(which node) /usr/bin/node
+fi
 
 # Buat user sistem genieacs
 if ! id genieacs >/dev/null 2>&1; then

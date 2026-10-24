@@ -150,6 +150,24 @@ systemctl daemon-reload
 systemctl enable genieacs-agent.service 2>/dev/null || true
 systemctl restart genieacs-agent.service 2>/dev/null || true
 
+# Pastikan symlink binary genieacs-* selalu ada di /usr/bin/ dan /usr/local/bin/
+for mod in "cwmp" "nbi" "fs" "ui"; do
+  BIN_LOC=""
+  if [ -x "/usr/bin/genieacs-${mod}" ]; then
+    BIN_LOC="/usr/bin/genieacs-${mod}"
+  elif [ -x "/usr/local/bin/genieacs-${mod}" ]; then
+    BIN_LOC="/usr/local/bin/genieacs-${mod}"
+  else
+    BIN_LOC=$(find /usr /root/.nvm /opt -name "genieacs-${mod}" 2>/dev/null | head -n 1)
+  fi
+  
+  if [ -n "$BIN_LOC" ]; then
+    [ "$BIN_LOC" != "/usr/bin/genieacs-${mod}" ] && ln -sf "$BIN_LOC" "/usr/bin/genieacs-${mod}"
+    [ "$BIN_LOC" != "/usr/local/bin/genieacs-${mod}" ] && ln -sf "$BIN_LOC" "/usr/local/bin/genieacs-${mod}"
+  fi
+  chmod +x "/usr/bin/genieacs-${mod}" 2>/dev/null || true
+done
+
 echo -e "${BLUE}[3/3] Merestart layanan GenieACS & Agent...${NC}"
 systemctl restart genieacs-ui genieacs-cwmp genieacs-nbi genieacs-fs genieacs-agent 2>/dev/null || {
   service genieacs-ui restart 2>/dev/null || true
