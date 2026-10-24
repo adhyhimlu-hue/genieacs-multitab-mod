@@ -35,7 +35,11 @@ def get_config():
     cfgs = db.config.find({"_id": {"$regex": "^agent\\."}})
     res = {}
     for c in cfgs:
-        res[c["_id"]] = str(c.get("value", "")).strip()
+        val = str(c.get("value", "")).strip()
+        # Strip outer single or double quotes if entered in GenieACS UI
+        if (val.startswith("'") and val.endswith("'")) or (val.startswith('"') and val.endswith('"')):
+            val = val[1:-1]
+        res[c["_id"]] = val.strip()
     return res
 
 def is_valid_token(val):
@@ -267,23 +271,27 @@ def send_telegram(token, chat_id, text, parse_mode="Markdown"):
 def handle_incoming_message(token, chat_id, user_text, gemini_key, model_name):
     txt = user_text.strip()
     
-    # 1. Direct Command Fast-Path
+    # 1. Direct Command Fast-Path (Dapat berjalan 100% tanpa Gemini API Key)
     if txt.startswith("/start") or txt.startswith("/help"):
         help_msg = (
-            "🤖 *ALIJAYA NET - GenieACS AI Assistant*\n"
+            "🤖 *ALIJAYA NET - GenieACS Telegram Bot*\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            "Gunakan perintah teks bebas atau perintah langsung:\n\n"
-            "📌 *Perintah Langsung:*\n"
+            "Perintah langsung (Bisa digunakan tanpa API Key):\n\n"
+            "🔍 *Cek Status & Redaman:*\n"
             "• `/cek <pppoe_username>`\n"
-            "  Contoh: `/cek cucimotor`\n"
+            "  _Contoh:_ `/cek cucimotor`\n\n"
+            "📶 *Ubah Nama WiFi (SSID):*\n"
+            "• `/ssid <pppoe_user> <nama_wifi_baru>`\n"
+            "  _Contoh:_ `/ssid cucimotor Cuci Motor Baru`\n\n"
+            "🔑 *Ubah Sandi WiFi (Password):*\n"
+            "• `/pass <pppoe_user> <sandi_baru>`\n"
+            "  _Contoh:_ `/pass cucimotor 12345678`\n\n"
+            "⚡ *Ubah SSID & Sandi Sekaligus:*\n"
             "• `/wifi <pppoe_user> <ssid_baru> <sandi_baru>`\n"
-            "  Contoh: `/wifi budi01 ALIJAYA-BUDI 12345678`\n"
+            "  _Contoh:_ `/wifi cucimotor CuciMotor 12345678`\n\n"
+            "🔄 *Restart / Reboot Modem:*\n"
             "• `/reboot <pppoe_user>`\n"
-            "  Contoh: `/reboot warnet_oki`\n\n"
-            "💬 *Atau Ketik Santai (Didukung AI Gemini):*\n"
-            "• _\"Cek redaman pelanggan cucimotor dong\"_\n"
-            "• _\"Ganti wifi budi01 jadi ALIJAYA-NET sandinya 88889999\"_\n"
-            "• _\"Tolong restart modem slamet_rt02\"_\n"
+            "  _Contoh:_ `/reboot cucimotor`\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             "👑 *Pengembang: ALIJAYA NET (081947215703)*"
         )
@@ -296,6 +304,52 @@ def handle_incoming_message(token, chat_id, user_text, gemini_key, model_name):
         send_telegram(token, chat_id, get_device_summary(dev))
         return
 
+    if txt.startswith("/ssid "):
+        parts = txt[6:].strip().split(maxsplit=1)
+        if len(parts) >= 2:
+            target, new_ssid = parts[0].strip(), parts[1].strip()
+            dev = find_device(target)
+            if not dev:
+                send_telegram(token, chat_id, f"❌ Modem pelanggan `{target}` tidak ditemukan.")
+                return
+            ok, msg = set_wifi_credentials(dev, new_ssid=new_ssid)
+            if ok:
+                send_telegram(token, chat_id, (
+                    f"✅ *Berhasil Mengubah Nama WiFi (SSID)!*\n"
+                    f"• *Pelanggan*: `{target}`\n"
+                    f"• *Nama WiFi Baru*: `{new_ssid}`\n"
+                    f"• *Status*: Terkirim ke modem via TR-069."
+                ))
+            else:
+                send_telegram(token, chat_id, f"❌ Gagal: {msg}")
+            return
+        else:
+            send_telegram(token, chat_id, "⚠️ Format salah. Gunakan:\n`/ssid <username_pppoe> <nama_wifi_baru>`\n_Contoh:_ `/ssid cucimotor Cuci Motor Baru`")
+            return
+
+    if txt.startswith("/pass "):
+        parts = txt[6:].strip().split(maxsplit=1)
+        if len(parts) >= 2:
+            target, new_pass = parts[0].strip(), parts[1].strip()
+            dev = find_device(target)
+            if not dev:
+                send_telegram(token, chat_id, f"❌ Modem pelanggan `{target}` tidak ditemukan.")
+                return
+            ok, msg = set_wifi_credentials(dev, new_password=new_pass)
+            if ok:
+                send_telegram(token, chat_id, (
+                    f"✅ *Berhasil Mengubah Sandi WiFi!*\n"
+                    f"• *Pelanggan*: `{target}`\n"
+                    f"• *Sandi Baru*: `{new_pass}`\n"
+                    f"• *Status*: Terkirim ke modem via TR-069."
+                ))
+            else:
+                send_telegram(token, chat_id, f"❌ Gagal: {msg}")
+            return
+        else:
+            send_telegram(token, chat_id, "⚠️ Format salah. Gunakan:\n`/pass <username_pppoe> <sandi_baru>`\n_Contoh:_ `/pass cucimotor 12345678`")
+            return
+
     if txt.startswith("/reboot "):
         target = txt[8:].strip()
         dev = find_device(target)
@@ -307,18 +361,27 @@ def handle_incoming_message(token, chat_id, user_text, gemini_key, model_name):
         return
 
     if txt.startswith("/wifi "):
-        parts = txt[6:].split()
+        parts = txt[6:].strip().split()
         if len(parts) >= 3:
             target, new_ssid, new_pass = parts[0], parts[1], parts[2]
             dev = find_device(target)
             if not dev:
                 send_telegram(token, chat_id, f"❌ Modem `{target}` tidak ditemukan.")
                 return
-            ok, msg = set_wifi_credentials(dev, new_ssid, new_pass)
-            send_telegram(token, chat_id, f"{'✅' if ok else '❌'} {msg}")
+            ok, msg = set_wifi_credentials(dev, new_ssid=new_ssid, new_password=new_pass)
+            if ok:
+                send_telegram(token, chat_id, (
+                    f"✅ *Berhasil Mengubah WiFi & Sandi!*\n"
+                    f"• *Pelanggan*: `{target}`\n"
+                    f"• *SSID Baru*: `{new_ssid}`\n"
+                    f"• *Sandi Baru*: `{new_pass}`\n"
+                    f"• *Status*: Terkirim ke modem via TR-069."
+                ))
+            else:
+                send_telegram(token, chat_id, f"❌ Gagal: {msg}")
             return
         else:
-            send_telegram(token, chat_id, "⚠️ Format salah. Gunakan: `/wifi <username> <ssid> <password>`")
+            send_telegram(token, chat_id, "⚠️ Format salah. Gunakan:\n`/wifi <username> <ssid> <password>`")
             return
 
     # 2. Natural Language via Gemini AI
