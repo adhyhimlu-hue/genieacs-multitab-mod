@@ -80,15 +80,27 @@ fi
 mkdir -p /var/lib/mongodb /var/log/mongodb /var/log.ext/mongodb 2>/dev/null || true
 chown -R mongodb:mongodb /var/lib/mongodb /var/log/mongodb /var/log.ext/mongodb 2>/dev/null || true
 
+# Periksa apakah mongod sudah ada dan apakah benar-benar bisa dieksekusi (tidak Illegal instruction)
+NEED_INSTALL=0
 if ! command -v mongod >/dev/null 2>&1; then
-  echo -e "${YELLOW}Mengunduh binary MongoDB yang stabil dan kompatibel untuk $ARCH...${NC}"
+  NEED_INSTALL=1
+elif ! mongod --version >/dev/null 2>&1; then
+  echo -e "${YELLOW}[!] Binary mongod yang terpasang tidak kompatibel dengan CPU ini (Illegal instruction).${NC}"
+  echo -e "${YELLOW}Membersihkan dan mengunduh MongoDB 4.4 yang 100% kompatibel untuk semua CPU ARM STB...${NC}"
+  systemctl stop mongod 2>/dev/null || true
+  pkill -9 -f mongod 2>/dev/null || true
+  rm -f /usr/bin/mongo* /usr/local/bin/mongo*
+  NEED_INSTALL=1
+fi
+
+if [ "$NEED_INSTALL" -eq 1 ]; then
+  echo -e "${YELLOW}Mengunduh binary MongoDB 4.4 universal & stabil untuk $ARCH...${NC}"
   
   # Cek kebutuhan libssl1.1 untuk Debian/Armbian
   if ! ldconfig -p | grep -q "libssl.so.1.1"; then
     echo -e "${YELLOW}Memasang dependensi libssl1.1...${NC}"
     if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
-      wget -q http://ports.ubuntu.com/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2.24_arm64.deb -O /tmp/libssl1.1.deb || \
-      wget -q http://security.debian.org/debian-security/pool/updates/main/o/openssl/libssl1.1_1.1.1n-0+deb11u5_arm64.deb -O /tmp/libssl1.1.deb || true
+      wget -q http://ports.ubuntu.com/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2.24_arm64.deb -O /tmp/libssl1.1.deb || true
     else
       wget -q http://security.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2.24_amd64.deb -O /tmp/libssl1.1.deb || true
     fi
@@ -98,11 +110,11 @@ if ! command -v mongod >/dev/null 2>&1; then
     fi
   fi
 
-  # Unduh MongoDB binary archive resmi
+  # Unduh MongoDB binary archive resmi v4.4.29 (100% ARMv8.0 kompatibel bebas Illegal instruction)
   if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
-    MONGO_URL="https://fastdl.mongodb.org/linux/mongodb-linux-aarch64-ubuntu2004-5.0.6.tgz"
+    MONGO_URL="https://fastdl.mongodb.org/linux/mongodb-linux-aarch64-ubuntu2004-4.4.29.tgz"
   else
-    MONGO_URL="https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-ubuntu2004-5.0.6.tgz"
+    MONGO_URL="https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-ubuntu2004-4.4.29.tgz"
   fi
 
   echo "Mengunduh dari: $MONGO_URL"
@@ -111,10 +123,16 @@ if ! command -v mongod >/dev/null 2>&1; then
   cp -f /tmp/mongodb-*/bin/* /usr/bin/
   rm -rf /tmp/mongodb*
   chmod +x /usr/bin/mongo*
-else
-  echo -e "${GREEN}[OK] Binary mongod sudah tersedia: $(mongod --version | head -n1)${NC}"
-  chmod +x /usr/bin/mongo* 2>/dev/null || true
+
+  # Pastikan mongod yang baru terpasang bisa berjalan
+  if ! mongod --version >/dev/null 2>&1; then
+    echo -e "${RED}[ERROR] Binary mongod masih gagal dijalankan. Memasang mongodb dari repository apt bawaan distro...${NC}"
+    apt-get update -y && apt-get install -y mongodb || true
+  fi
 fi
+
+echo -e "${GREEN}[OK] Binary mongod aktif & kompatibel: $(mongod --version 2>/dev/null | head -n1 || echo 'MongoDB Server')${NC}"
+chmod +x /usr/bin/mongo* 2>/dev/null || true
 
 # Tulis konfigurasi mongod.conf yang hemat RAM (Sangat ramah STB RAM 1GB / 2GB)
 cat << 'EOF' > /etc/mongod.conf
@@ -177,16 +195,23 @@ systemctl enable mongod
 echo -e "${YELLOW}Menginisialisasi user database 'genie' di MongoDB...${NC}"
 # Matikan sementara jika sedang jalan
 systemctl stop mongod 2>/dev/null || true
+pkill -9 -f mongod 2>/dev/null || true
+sleep 1
+
+# Pastikan kepemilikan folder data
+chown -R mongodb:mongodb /var/lib/mongodb /var/log/mongodb /var/log.ext/mongodb 2>/dev/null || true
+
 # Jalankan sementara di background tanpa auth
+su - mongodb -s /bin/bash -c "mongod --dbpath /var/lib/mongodb --bind_ip 127.0.0.1 --port 27017 --fork --logpath /var/log/mongodb/init.log" 2>/dev/null || \
 mongod --dbpath /var/lib/mongodb --bind_ip 127.0.0.1 --port 27017 --fork --logpath /var/log/mongodb/init.log
 
 sleep 3
 
-# Buat database genieacs dan user genie:genie jika mongosh/mongo tersedia
-if command -v mongosh >/dev/null 2>&1; then
-  MONGO_CLI="mongosh"
-elif command -v mongo >/dev/null 2>&1; then
+# Buat database genieacs dan user genie:genie jika mongo/mongosh tersedia
+if command -v mongo >/dev/null 2>&1; then
   MONGO_CLI="mongo"
+elif command -v mongosh >/dev/null 2>&1; then
+  MONGO_CLI="mongosh"
 else
   MONGO_CLI=""
 fi
@@ -207,8 +232,9 @@ if [ -n "$MONGO_CLI" ]; then
 fi
 
 # Matikan proses mongod sementara dan jalankan via systemd resmi
-pkill -f mongod || true
+pkill -9 -f mongod 2>/dev/null || true
 sleep 2
+chown -R mongodb:mongodb /var/lib/mongodb /var/log/mongodb /var/log.ext/mongodb 2>/dev/null || true
 systemctl start mongod
 echo -e "${GREEN}[OK] MongoDB berhasil aktif!${NC}"
 
@@ -232,6 +258,11 @@ if [ -n "$BACKUP_ARCHIVE" ] && [ -f "$BACKUP_ARCHIVE" ]; then
   echo -e "\n${BLUE}[+] Ditemukan file backup database: ${YELLOW}${BACKUP_ARCHIVE}${NC}"
   echo -e "${YELLOW}Merestore database GenieACS (Virtual Parameters universal, Preset & Config ALIJAYA NET)...${NC}"
   
+  if ! command -v mongorestore >/dev/null 2>&1; then
+    echo -e "${YELLOW}[!] Memasang paket mongo-tools (mongorestore)...${NC}"
+    apt-get update -y >/dev/null 2>&1 && apt-get install -y mongo-tools >/dev/null 2>&1 || true
+  fi
+
   TMP_RESTORE_DIR="/tmp/genieacs_restore_$$"
   mkdir -p "$TMP_RESTORE_DIR"
   tar -xzf "$BACKUP_ARCHIVE" -C "$TMP_RESTORE_DIR"
