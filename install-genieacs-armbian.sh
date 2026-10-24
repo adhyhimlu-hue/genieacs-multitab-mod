@@ -358,6 +358,17 @@ elif [ -f "./agent.py" ]; then
 fi
 chmod +x /opt/genieacs-agent/agent.py 2>/dev/null || true
 
+# CLI Helper set-bot
+if [ -f "${SCRIPT_DIR}/set-bot.py" ]; then
+  cp "${SCRIPT_DIR}/set-bot.py" /opt/genieacs-agent/set-bot.py
+elif [ -f "./set-bot.py" ]; then
+  cp "./set-bot.py" /opt/genieacs-agent/set-bot.py
+fi
+if [ -f /opt/genieacs-agent/set-bot.py ]; then
+  chmod +x /opt/genieacs-agent/set-bot.py
+  ln -sf /opt/genieacs-agent/set-bot.py /usr/local/bin/set-bot
+fi
+
 cat << 'EOF' > /etc/systemd/system/genieacs-agent.service
 [Unit]
 Description=GenieACS AI Telegram Agent (ALIJAYA NET)
@@ -393,7 +404,7 @@ echo -e "${CYAN}║${NC}  🔑 ${BOLD}Login Bawaan${NC}         : ${GREEN}admin$
 echo -e "${CYAN}║${NC}  📡 ${BOLD}URL CWMP (Modem ONT)${NC} : ${YELLOW}${BOLD}http://${IP_ADDRESS}:7547${NC}"
 echo -e "${CYAN}║${NC}  🔌 ${BOLD}Port NBI (REST API)${NC}  : ${WHITE}http://${IP_ADDRESS}:7557${NC}"
 echo -e "${CYAN}║${NC}  📁 ${BOLD}Port FS (File Server)${NC}: ${WHITE}http://${IP_ADDRESS}:7567${NC}"
-echo -e "${CYAN}║${NC}  🤖 ${BOLD}AI Telegram Agent${NC}    : ${GREEN}AKTIF (Input Token & Key di Admin -> Config)${NC}"
+echo -e "${CYAN}║${NC}  🤖 ${BOLD}AI Telegram Agent${NC}    : ${GREEN}AKTIF (Ketik '${YELLOW}set-bot${GREEN}' di terminal SSH)${NC}"
 echo -e "${CYAN}║${NC}  ⚡ ${BOLD}Status Layanan${NC}       : ${GREEN}MongoDB & 4 Service GenieACS AKTIF (OK)${NC}"
 echo -e "${CYAN}║${NC}  🛡️ ${BOLD}Proteksi Storage${NC}     : ${GREEN}Logrotate & Ramlog AKTIF (Bebas Disk Penuh)${NC}"
 echo -e "${CYAN}╠══════════════════════════════════════════════════════════════════════╣${NC}"

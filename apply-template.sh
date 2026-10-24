@@ -104,6 +104,17 @@ elif [ -f "./agent.py" ]; then
 fi
 chmod +x /opt/genieacs-agent/agent.py 2>/dev/null || true
 
+# CLI Helper set-bot
+if [ -f "${SCRIPT_DIR}/set-bot.py" ]; then
+  cp "${SCRIPT_DIR}/set-bot.py" /opt/genieacs-agent/set-bot.py
+elif [ -f "./set-bot.py" ]; then
+  cp "./set-bot.py" /opt/genieacs-agent/set-bot.py
+fi
+if [ -f /opt/genieacs-agent/set-bot.py ]; then
+  chmod +x /opt/genieacs-agent/set-bot.py
+  ln -sf /opt/genieacs-agent/set-bot.py /usr/local/bin/set-bot
+fi
+
 cat << 'EOF' > /etc/systemd/system/genieacs-agent.service
 [Unit]
 Description=GenieACS AI Telegram Agent (ALIJAYA NET)
@@ -136,7 +147,7 @@ echo -e "${GREEN}═════════════════════
 echo -e "${BOLD}${GREEN}✔ SUKSES! Tampilan, Fitur Informatif & Telegram Bot Berhasil Aktif!${NC}"
 echo -e "${CYAN}• Tab Aktif    : LAN, WAN (Add WAN Button), WLAN (Multi-SSID), USER, TR069${NC}"
 echo -e "${CYAN}• Fitur Data   : Optical Power Rx/Tx, Host LAN Clients, WiFi Clients RSSI${NC}"
-echo -e "${CYAN}• Telegram Bot : AKTIF (Tinggal masukkan Token & Chat ID di Admin -> Config)${NC}"
+echo -e "${CYAN}• Telegram Bot : AKTIF (Ketik '${YELLOW}set-bot${CYAN}' di terminal atau via Admin -> Config)${NC}"
 echo -e "${CYAN}• Status Sesi  : Provision Bebas Fault & Kompatibel Semua Merk ONT${NC}"
 echo -e "${YELLOW}Silakan buka browser dan refresh (Ctrl + F5) pada halaman GenieACS UI.${NC}"
 echo -e "${GREEN}══════════════════════════════════════════════════════════════════════${NC}"
