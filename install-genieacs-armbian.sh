@@ -308,6 +308,33 @@ echo -e "\n${BLUE}[4/7] Menginstall GenieACS secara global via NPM...${NC}"
 npm install -g genieacs@1.2.13 --unsafe-perm=true --prefix /usr 2>/dev/null || \
 npm install -g genieacs@1.2.13 --unsafe-perm=true
 
+# Terapkan UI Frontend Multi-Tab & Modifikasi Binaries (ALIJAYA NET)
+MOD_ARCHIVE=""
+if [ -f "${SCRIPT_DIR}/genieacs_ui_mod.tar.gz" ]; then
+  MOD_ARCHIVE="${SCRIPT_DIR}/genieacs_ui_mod.tar.gz"
+elif [ -f "./genieacs_ui_mod.tar.gz" ]; then
+  MOD_ARCHIVE="./genieacs_ui_mod.tar.gz"
+elif [ -f "/root/genieacs-multitab-mod/genieacs_ui_mod.tar.gz" ]; then
+  MOD_ARCHIVE="/root/genieacs-multitab-mod/genieacs_ui_mod.tar.gz"
+fi
+
+if [ -n "$MOD_ARCHIVE" ] && [ -f "$MOD_ARCHIVE" ]; then
+  echo -e "${YELLOW}Menerapkan tema & modul tampilan Multi-Tab (ALIJAYA NET)...${NC}"
+  GENIE_DIR=""
+  if [ -d "/usr/lib/node_modules/genieacs" ]; then
+    GENIE_DIR="/usr/lib/node_modules/genieacs"
+  elif [ -d "/usr/local/lib/node_modules/genieacs" ]; then
+    GENIE_DIR="/usr/local/lib/node_modules/genieacs"
+  fi
+  
+  if [ -n "$GENIE_DIR" ]; then
+    tar -zxf "$MOD_ARCHIVE" -C "$GENIE_DIR/"
+    cp -f "$GENIE_DIR/bin/"* /usr/bin/ 2>/dev/null || true
+    cp -f "$GENIE_DIR/bin/"* /usr/local/bin/ 2>/dev/null || true
+    echo -e "${GREEN}[OK] File frontend Multi-Tab & Binaries berhasil diterapkan!${NC}"
+  fi
+fi
+
 # Pastikan symlink binary genieacs-* selalu ada di /usr/bin/ dan /usr/local/bin/
 for mod in "cwmp" "nbi" "fs" "ui"; do
   BIN_LOC=""

@@ -197,6 +197,7 @@ Masukkan Token Bot Telegram, Chat ID, API Key Gemini, Nama Brand (ISP/RT-RW Net 
 ├── apply-template.sh             # Script pengubah tema & multi-tab untuk server yang sudah aktif
 ├── agent.py                      # Skrip GenieACS AI Telegram Agent (bertenaga Gemini)
 ├── set-bot.py                    # Tool interaktif CLI (perintah 'set-bot') untuk setting bot tanpa ribet
+├── genieacs_ui_mod.tar.gz        # Bundle frontend Multi-Tab ALIJAYA NET (app.js, css, logo, binary modifikasi)
 ├── genieacs_template_ui.tar.gz   # Arsip template UI (~17 KB) tanpa data perangkat
 └── genieacs_db.tar.gz            # Backup database template (~21 KB) siap pakai tanpa data ONT asing
 ```

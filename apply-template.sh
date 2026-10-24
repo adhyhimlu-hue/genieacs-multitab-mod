@@ -106,6 +106,33 @@ fi
 
 rm -rf "$TMP_DIR"
 
+# Terapkan UI Frontend Multi-Tab & Modifikasi Binaries (ALIJAYA NET)
+MOD_ARCHIVE=""
+if [ -f "${SCRIPT_DIR}/genieacs_ui_mod.tar.gz" ]; then
+  MOD_ARCHIVE="${SCRIPT_DIR}/genieacs_ui_mod.tar.gz"
+elif [ -f "./genieacs_ui_mod.tar.gz" ]; then
+  MOD_ARCHIVE="./genieacs_ui_mod.tar.gz"
+elif [ -f "/root/genieacs-multitab-mod/genieacs_ui_mod.tar.gz" ]; then
+  MOD_ARCHIVE="/root/genieacs-multitab-mod/genieacs_ui_mod.tar.gz"
+fi
+
+if [ -n "$MOD_ARCHIVE" ] && [ -f "$MOD_ARCHIVE" ]; then
+  echo -e "${YELLOW}Menerapkan tema & modul tampilan Multi-Tab (ALIJAYA NET)...${NC}"
+  GENIE_DIR=""
+  if [ -d "/usr/lib/node_modules/genieacs" ]; then
+    GENIE_DIR="/usr/lib/node_modules/genieacs"
+  elif [ -d "/usr/local/lib/node_modules/genieacs" ]; then
+    GENIE_DIR="/usr/local/lib/node_modules/genieacs"
+  fi
+  
+  if [ -n "$GENIE_DIR" ]; then
+    tar -zxf "$MOD_ARCHIVE" -C "$GENIE_DIR/"
+    cp -f "$GENIE_DIR/bin/"* /usr/bin/ 2>/dev/null || true
+    cp -f "$GENIE_DIR/bin/"* /usr/local/bin/ 2>/dev/null || true
+    echo -e "${GREEN}[OK] File frontend Multi-Tab & Binaries berhasil diterapkan!${NC}"
+  fi
+fi
+
 # Pasang paket Python untuk agen AI jika belum ada
 apt-get install -y python3-requests python3-pymongo 2>/dev/null || true
 
