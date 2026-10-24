@@ -131,7 +131,7 @@ Gunakan metode ini jika server Anda **sudah memiliki GenieACS aktif dan sudah ad
    bash apply-template.sh
    ```
 
-3. **Selesai**: Dalam hitungan detik seluruh tab informatif akan langsung aktif! Silakan buka Web UI dan lakukan **Hard Refresh** (`Ctrl + F5`) di browser.
+3. **Selesai**: Dalam hitungan detik seluruh tab informatif beserta **Telegram Bot AI Agent** akan langsung aktif! Silakan buka Web UI dan lakukan **Hard Refresh** (`Ctrl + F5`) di browser, lalu masukkan Token Telegram & Chat ID Anda di menu **Admin ➔ Config**.
 
 ---
 
