@@ -110,11 +110,11 @@ if [ "$NEED_INSTALL" -eq 1 ]; then
     fi
   fi
 
-  # Unduh MongoDB binary archive resmi v4.4.29 (100% ARMv8.0 kompatibel bebas Illegal instruction)
+  # Unduh MongoDB binary archive resmi v4.4.18 (Versi terakhir yang 100% ARMv8.0 kompatibel bebas Illegal instruction)
   if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
-    MONGO_URL="https://fastdl.mongodb.org/linux/mongodb-linux-aarch64-ubuntu2004-4.4.29.tgz"
+    MONGO_URL="https://fastdl.mongodb.org/linux/mongodb-linux-aarch64-ubuntu2004-4.4.18.tgz"
   else
-    MONGO_URL="https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-ubuntu2004-4.4.29.tgz"
+    MONGO_URL="https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-ubuntu2004-4.4.18.tgz"
   fi
 
   echo "Mengunduh dari: $MONGO_URL"
