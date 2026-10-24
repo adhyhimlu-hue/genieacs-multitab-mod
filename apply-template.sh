@@ -53,7 +53,21 @@ fi
 # Cek mongorestore
 if ! command -v mongorestore >/dev/null 2>&1; then
   echo -e "${YELLOW}[!] Memasang paket mongo-tools (mongorestore)...${NC}"
-  apt-get update -y && apt-get install -y mongo-tools || true
+  apt-get update -y >/dev/null 2>&1 && apt-get install -y mongo-tools >/dev/null 2>&1 || true
+  if ! command -v mongorestore >/dev/null 2>&1; then
+    ARCH=$(uname -m)
+    if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+      TOOLS_URL="https://fastdl.mongodb.org/tools/db/mongodb-database-tools-ubuntu2004-arm64-100.9.4.tgz"
+    else
+      TOOLS_URL="https://fastdl.mongodb.org/tools/db/mongodb-database-tools-ubuntu2004-x86_64-100.9.4.tgz"
+    fi
+    echo -e "${YELLOW}Mengunduh binary mongorestore resmi ($ARCH)...${NC}"
+    wget -q "$TOOLS_URL" -O /tmp/tools.tgz && \
+    tar -zxvf /tmp/tools.tgz -C /tmp/ && \
+    cp -f /tmp/mongodb-database-tools-*/bin/* /usr/bin/ && \
+    rm -rf /tmp/tools.tgz /tmp/mongodb-database-tools-* && \
+    chmod +x /usr/bin/mongo*
+  fi
 fi
 
 # Coba deteksi URI MongoDB (dengan user genie atau tanpa auth)
