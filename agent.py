@@ -39,8 +39,9 @@ def get_config():
     res = {}
     for c in cfgs:
         val = str(c.get("value", "")).strip()
-        if (val.startswith("'") and val.endswith("'")) or (val.startswith('"') and val.endswith('"')):
-            val = val[1:-1]
+        # Bersihkan semua lapisan tanda petik (' atau ") yang dibuat oleh parser GenieACS
+        while len(val) >= 2 and ((val.startswith("'") and val.endswith("'")) or (val.startswith('"') and val.endswith('"'))):
+            val = val[1:-1].strip()
         res[c["_id"]] = val.strip()
     return res
 
