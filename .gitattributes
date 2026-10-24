@@ -1,0 +1,4 @@
+# Enforce LF for shell scripts and Unix archives
+*.sh text eol=lf
+*.tar.gz binary
+*.bson binary
