@@ -171,8 +171,8 @@ Masukkan Token Bot Telegram, Chat ID, dan API Key Gemini Anda secara langsung ta
 2. Cari konfigurasi dengan awalan **`agent`**.
 3. **PENTING**: **Klik baris konfigurasi yang sudah ada** (jangan klik tombol `+ New` karena akan muncul pesan *Config already exists*).
 4. Masukkan nilainya dengan menambahkan tanda petik tunggal (`'...'`):
-   * `agent.telegram.botToken` : `'1938127147:AAFMD7X_x7D7RIVmcgCJcKVfwEQumkVwbZU'` *(wajib dengan tanda petik)*
-   * `agent.telegram.adminChatId` : `'567858628'`
+   * `agent.telegram.botToken` : `'1938127147:AAFMD7X_xxxxxxxxxxxxxxumkVwbZU'` *(wajib dengan tanda petik)*
+   * `agent.telegram.adminChatId` : `'56xxxxx28'`
    * `agent.gemini.apiKey` : `'AIzaSyD...'`
 5. Klik tombol **Save**. Bot Agent akan langsung mendeteksi dan aktif!
 
