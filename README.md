@@ -135,6 +135,33 @@ Gunakan metode ini jika server Anda **sudah memiliki GenieACS aktif dan sudah ad
 
 ---
 
+## 🤖 Asisten AI Telegram GenieACS (Powered by Gemini)
+
+Repositori ini sudah dilengkapi modul **Asisten AI Telegram** yang otomatis terpasang sebagai layanan sistem (`genieacs-agent.service`). Anda bisa mengontrol dan memantau seluruh modem pelanggan langsung dari chat Telegram menggunakan nama **Username PPPoE**:
+
+### 🛠️ Fitur Asisten AI Telegram:
+1. **Cek Redaman & Status Lengkap**:
+   * Ketik: `/cek <username_pppoe>` *(contoh: `/cek cucimotor`)*
+   * Atau bahasa santai: _"Cek redaman pelanggan cucimotor dong"_
+   * Menampilkan Redaman RX Power (dBm), Suhu, IP WAN, Uptime, Status Online/Offline, dan jumlah user terhubung.
+2. **Ganti SSID & Password WiFi Seketika**:
+   * Ketik: `/wifi <username_pppoe> <ssid_baru> <password_baru>`
+   * Atau bahasa santai: _"Ganti wifi budi01 jadi ALIJAYA-BUDI sandinya 12345678"_
+3. **Restart / Reboot Modem Jarak Jauh**:
+   * Ketik: `/reboot <username_pppoe>` *(contoh: `/reboot warnet_oki`)*
+
+### ⚙️ Cara Konfigurasi Sangat Mudah (Langsung dari Web UI):
+Anda **TIDAK PERLU** mengedit file skrip di server! Cukup buka menu GenieACS Web UI:
+1. Masuk ke menu **Admin** ➔ **Config** (`http://<IP-SERVER>:3000/#!/config`).
+2. Cari kata kunci: **`agent`**.
+3. Isi parameter berikut lalu klik **Save**:
+   * `agent.gemini.apiKey` : Masukkan API Key Gemini dari [Google AI Studio](https://aistudio.google.com/)
+   * `agent.telegram.botToken` : Masukkan Token Bot Telegram dari [@BotFather](https://t.me/BotFather)
+   * `agent.telegram.adminChatId` : Masukkan ID Chat Telegram Anda (bisa didapat via [@userinfobot](https://t.me/userinfobot))
+4. Bot akan otomatis aktif dan menyapa Anda di Telegram!
+
+---
+
 ## 🌐 Akses Web UI & Port Default
 
 * **Alamat Web UI** : `http://<IP-SERVER>:3000`
@@ -148,8 +175,9 @@ Gunakan metode ini jika server Anda **sudah memiliki GenieACS aktif dan sudah ad
 
 ```text
 ├── README.md                     # Dokumentasi resmi & panduan lengkap
-├── install-genieacs-armbian.sh   # Script auto-installer GenieACS + MongoDB untuk server baru
+├── install-genieacs-armbian.sh   # Script auto-installer GenieACS + MongoDB + Agent untuk server baru
 ├── apply-template.sh             # Script pengubah tema & multi-tab untuk server yang sudah aktif
+├── agent.py                      # Skrip GenieACS AI Telegram Agent (bertenaga Gemini)
 ├── genieacs_template_ui.tar.gz   # Arsip template ringan (~17 KB) tanpa data perangkat
 └── genieacs_db.tar.gz            # Backup database lengkap (~211 KB) siap pakai
 ```

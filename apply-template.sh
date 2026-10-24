@@ -92,8 +92,41 @@ fi
 
 rm -rf "$TMP_DIR"
 
-echo -e "${BLUE}[3/3] Merestart layanan GenieACS...${NC}"
-systemctl restart genieacs-ui genieacs-cwmp genieacs-nbi genieacs-fs 2>/dev/null || {
+# Pasang paket Python untuk agen AI jika belum ada
+apt-get install -y python3-requests python3-pymongo 2>/dev/null || true
+
+# Pasang script agen jika ada di direktori
+mkdir -p /opt/genieacs-agent
+if [ -f "${SCRIPT_DIR}/agent.py" ]; then
+  cp "${SCRIPT_DIR}/agent.py" /opt/genieacs-agent/agent.py
+elif [ -f "./agent.py" ]; then
+  cp "./agent.py" /opt/genieacs-agent/agent.py
+fi
+chmod +x /opt/genieacs-agent/agent.py 2>/dev/null || true
+
+cat << 'EOF' > /etc/systemd/system/genieacs-agent.service
+[Unit]
+Description=GenieACS AI Telegram Agent (ALIJAYA NET)
+After=network.target mongod.service genieacs-nbi.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/genieacs-agent
+ExecStart=/usr/bin/python3 /opt/genieacs-agent/agent.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable genieacs-agent.service 2>/dev/null || true
+systemctl restart genieacs-agent.service 2>/dev/null || true
+
+echo -e "${BLUE}[3/3] Merestart layanan GenieACS & Agent...${NC}"
+systemctl restart genieacs-ui genieacs-cwmp genieacs-nbi genieacs-fs genieacs-agent 2>/dev/null || {
   service genieacs-ui restart 2>/dev/null || true
   service genieacs-cwmp restart 2>/dev/null || true
 }

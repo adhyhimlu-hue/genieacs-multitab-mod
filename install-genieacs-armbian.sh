@@ -45,9 +45,11 @@ if [ "$ARCH" != "aarch64" ] && [ "$ARCH" != "arm64" ] && [ "$ARCH" != "x86_64" ]
 fi
 
 # 2. Update Sistem & Pasang Paket Dasar
-echo -e "\n${BLUE}[1/7] Mengupdate repositori dan menginstall paket dasar...${NC}"
+echo -e "\n${BLUE}[1/8] Mengupdate repositori dan menginstall paket dasar...${NC}"
+# Fix repository debian jika ada 404 backports
+sed -i 's/^deb .*bullseye-backports/# &/' /etc/apt/sources.list /etc/apt/sources.list.d/* 2>/dev/null || true
 apt-get update -y
-apt-get install -y curl wget git gnupg lsb-release build-essential libcurl4 libssl-dev logrotate rsync net-tools
+apt-get install -y curl wget git gnupg lsb-release build-essential libcurl4 libssl-dev logrotate rsync net-tools python3-requests python3-pymongo
 
 # 3. Instalasi Node.js v20 LTS (NodeSource)
 echo -e "\n${BLUE}[2/7] Menginstall Node.js v20 LTS dari NodeSource...${NC}"
@@ -346,8 +348,39 @@ fi
 # Tes logrotate
 logrotate -d /etc/logrotate.d/genieacs >/dev/null 2>&1 || true
 
-# 8. Selesai & Ringkasan Status
-echo -e "\n${BLUE}[7/7] Memverifikasi status port & layanan...${NC}"
+# 8. Memasang GenieACS AI Telegram Agent (Hermes/Gemini Engine)
+echo -e "\n${BLUE}[7/8] Memasang & Mengaktifkan GenieACS AI Telegram Agent...${NC}"
+mkdir -p /opt/genieacs-agent
+if [ -f "${SCRIPT_DIR}/agent.py" ]; then
+  cp "${SCRIPT_DIR}/agent.py" /opt/genieacs-agent/agent.py
+elif [ -f "./agent.py" ]; then
+  cp "./agent.py" /opt/genieacs-agent/agent.py
+fi
+chmod +x /opt/genieacs-agent/agent.py 2>/dev/null || true
+
+cat << 'EOF' > /etc/systemd/system/genieacs-agent.service
+[Unit]
+Description=GenieACS AI Telegram Agent (ALIJAYA NET)
+After=network.target mongod.service genieacs-nbi.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/genieacs-agent
+ExecStart=/usr/bin/python3 /opt/genieacs-agent/agent.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable genieacs-agent.service
+systemctl restart genieacs-agent.service 2>/dev/null || true
+
+# 9. Selesai & Ringkasan Status
+echo -e "\n${BLUE}[8/8] Memverifikasi status port & layanan...${NC}"
 sleep 3
 
 IP_ADDRESS=$(hostname -I | awk '{print $1}')
@@ -360,6 +393,7 @@ echo -e "${CYAN}║${NC}  🔑 ${BOLD}Login Bawaan${NC}         : ${GREEN}admin$
 echo -e "${CYAN}║${NC}  📡 ${BOLD}URL CWMP (Modem ONT)${NC} : ${YELLOW}${BOLD}http://${IP_ADDRESS}:7547${NC}"
 echo -e "${CYAN}║${NC}  🔌 ${BOLD}Port NBI (REST API)${NC}  : ${WHITE}http://${IP_ADDRESS}:7557${NC}"
 echo -e "${CYAN}║${NC}  📁 ${BOLD}Port FS (File Server)${NC}: ${WHITE}http://${IP_ADDRESS}:7567${NC}"
+echo -e "${CYAN}║${NC}  🤖 ${BOLD}AI Telegram Agent${NC}    : ${GREEN}AKTIF (Input Token & Key di Admin -> Config)${NC}"
 echo -e "${CYAN}║${NC}  ⚡ ${BOLD}Status Layanan${NC}       : ${GREEN}MongoDB & 4 Service GenieACS AKTIF (OK)${NC}"
 echo -e "${CYAN}║${NC}  🛡️ ${BOLD}Proteksi Storage${NC}     : ${GREEN}Logrotate & Ramlog AKTIF (Bebas Disk Penuh)${NC}"
 echo -e "${CYAN}╠══════════════════════════════════════════════════════════════════════╣${NC}"
