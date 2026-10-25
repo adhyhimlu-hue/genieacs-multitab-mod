@@ -178,26 +178,31 @@ Repositori ini sudah dilengkapi modul **Asisten AI Telegram** yang otomatis terp
 
 ### ⚙️ Cara Konfigurasi Token & Akun Bot Telegram:
 
-Tersedia 2 cara mudah untuk mengisi Token & Chat ID Anda:
+Tersedia **3 Cara Fleksibel** untuk mengatur Token & Chat ID Anda:
 
-#### CARA 1 (Paling Mudah & Cepat via Terminal SSH):
-Cukup jalankan satu perintah ini di terminal server Anda:
-```bash
+#### CARA 1 (Paling Mudah - Melalui Halaman Web UI Port 7558):
+Anda tidak perlu lagi membuka terminal SSH! Cukup buka browser:
+* **Akses Form Web**: http://<IP-SERVER>:7558
+* Atau dari GenieACS Web UI, klik menu **Admin ➔ 🤖 Bot Telegram** di pojok kanan atas.
+* **Fitur di Halaman Web Ini**:
+  * Input Token Bot, Chat ID Admin/Grup, Brand Name, Nomor CS, dan Gemini API Key tanpa perlu pusing tanda petik.
+  * Tombol **💾 Simpan Pengaturan**: Langsung tersimpan ke database & aktif seketika.
+  * Tombol **🧪 Tes Kirim Telegram**: Mengetes langsung apakah bot berhasil mengirim pesan ke Telegram Anda.
+
+#### CARA 2 (Melalui Terminal SSH):
+Cukup jalankan satu perintah ini di terminal server:
+`ash
 set-bot
-```
-Masukkan Token Bot Telegram, Chat ID, API Key Gemini, Nama Brand (ISP/RT-RW Net Anda), serta Nomor WhatsApp CS secara langsung tanpa perlu pusing dengan tanda petik. Script akan otomatis memvalidasi, menyimpan ke database, dan mengaktifkan bot seketika!
+`
+Ikuti panduan interaktif di layar untuk mengisi Token, Chat ID, Brand, dan Nomor CS.
 
-#### CARA 2 (Melalui GenieACS Web UI):
-1. Masuk ke Web UI GenieACS ➔ menu **Admin** ➔ **Config** (`http://<IP-SERVER>:3000/#!/config`).
-2. Cari konfigurasi dengan awalan **`agent`**.
-3. **PENTING**: **Klik baris konfigurasi yang sudah ada** (jangan klik tombol `+ New` karena akan muncul pesan *Config already exists*).
-4. Masukkan nilainya dengan menambahkan tanda petik tunggal (`'...'`):
-   * `agent.telegram.botToken` : `'1938127147:AAFMD7X_xxxxxxxxxxxxxxumkVwbZU'` *(wajib dengan tanda petik)*
-   * `agent.telegram.adminChatId` : `'56xxxxx28'`
-   * `agent.gemini.apiKey` : `'AIzaSyD...'`
-   * `agent.brand.name` : `'ALIJAYA NET'` *(bisa diubah sesuai nama usaha/RT-RW Net Anda)*
-   * `agent.brand.phone` : `'081947215703'` *(nomor WhatsApp/CS yang tampil di pesan Telegram)*
-5. Klik tombol **Save**. Bot Agent akan langsung mendeteksi perubahan nama brand dan nomor kontak Anda tanpa perlu restart!
+#### CARA 3 (Melalui Menu Admin ➔ Config GenieACS):
+1. Masuk ke Web UI GenieACS ➔ menu **Admin** ➔ **Config** (http://<IP-SERVER>:3000/#!/admin/config).
+2. Ketik gent pada kotak pencarian filter.
+3. Klik baris yang ingin diubah dan masukkan nilainya dengan tanda petik tunggal ('...'):
+   * gent.telegram.botToken : '1938127147:AAFMD7X_xxxxxxxxxxxxxxumkVwbZU'
+   * gent.telegram.adminChatId : '567858628'
+4. Klik tombol **Save**.
 
 ---
 

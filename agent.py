@@ -11,6 +11,8 @@ import subprocess
 import requests
 import pymongo
 from urllib.parse import quote
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -1345,8 +1347,297 @@ def check_proactive_alerts(token, admin_ids):
 # MAIN AGENT SERVICE LOOP
 # ==============================================================================
 
+
+# ==============================================================================
+# WEB CONFIG UI (PORT 7558) - PENGATURAN BOT DARI WEB BROWSER
+# ==============================================================================
+
+HTML_CONFIG_PAGE = """<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pengaturan Bot Telegram & AI - ALIJAYA NET</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --border: #334155;
+      --primary: #06b6d4;
+      --primary-hover: #0891b2;
+      --success: #10b981;
+      --danger: #ef4444;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding: 24px; display: flex; justify-content: center; }
+    .container { width: 100%; max-width: 650px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 28px; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
+    .header { text-align: center; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 16px; }
+    .header h2 { font-size: 1.5rem; color: var(--primary); display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .header p { color: var(--text-muted); font-size: 0.88rem; margin-top: 4px; }
+    .form-group { margin-bottom: 18px; }
+    label { display: block; font-size: 0.88rem; font-weight: 600; margin-bottom: 6px; color: var(--text); }
+    .hint { font-size: 0.78rem; color: var(--text-muted); margin-top: 4px; line-height: 1.4; }
+    input[type="text"], input[type="password"], select {
+      width: 100%; padding: 10px 14px; background: #0f172a; border: 1px solid var(--border); border-radius: 8px; color: #fff; font-size: 0.95rem; outline: none; transition: border 0.2s;
+    }
+    input:focus, select:focus { border-color: var(--primary); }
+    .btn-row { display: flex; gap: 12px; margin-top: 24px; }
+    button {
+      flex: 1; padding: 12px 18px; border: none; border-radius: 8px; font-weight: 600; font-size: 0.95rem; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .btn-save { background: var(--primary); color: #000; }
+    .btn-save:hover { background: var(--primary-hover); }
+    .btn-test { background: #334155; color: #fff; }
+    .btn-test:hover { background: #475569; }
+    .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 18px; font-size: 0.9rem; display: none; }
+    .alert-success { background: rgba(16, 185, 129, 0.2); border: 1px solid var(--success); color: #34d399; }
+    .alert-error { background: rgba(239, 68, 68, 0.2); border: 1px solid var(--danger); color: #f87171; }
+    .back-link { display: inline-block; margin-top: 20px; text-decoration: none; color: var(--primary); font-size: 0.88rem; font-weight: 500; }
+    .back-link:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2>🤖 Pengaturan Bot Telegram & AI</h2>
+      <p>Kelola konfigurasi Bot TR-069 GenieACS langsung dari Web Browser</p>
+    </div>
+
+    <div id="alertBox" class="alert"></div>
+
+    <form id="botForm">
+      <div class="form-group">
+        <label>Status Layanan Bot:</label>
+        <select id="bot_enabled" name="enabled">
+          <option value="true">Aktif (Enabled) 🟢</option>
+          <option value="false">Nonaktif (Disabled) 🔴</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Token Bot Telegram:</label>
+        <input type="text" id="bot_token" name="token" placeholder="Contoh: 123456789:AAFMD7X_xxxxxxxxxxxxxx" required>
+        <div class="hint">Dapatkan dari @BotFather di Telegram. Tempel langsung tanpa tanda petik.</div>
+      </div>
+
+      <div class="form-group">
+        <label>Admin Chat ID / ID Grup Telegram:</label>
+        <input type="text" id="admin_id" name="admin_id" placeholder="Contoh: 567858628 atau 567858628, -100987654321" required>
+        <div class="hint">Dapatkan ID Anda dari @userinfobot. Bisa isi beberapa ID dipisah koma (untuk grup & teknisi).</div>
+      </div>
+
+      <div class="form-group">
+        <label>Nama Brand / ISP / RT-RW Net:</label>
+        <input type="text" id="brand_name" name="brand_name" placeholder="ALIJAYA NET">
+        <div class="hint">Nama usaha yang akan tampil di pesan dan salam bot.</div>
+      </div>
+
+      <div class="form-group">
+        <label>Nomor Telepon / WhatsApp CS:</label>
+        <input type="text" id="brand_phone" name="brand_phone" placeholder="081947215703">
+        <div class="hint">Nomor kontak layanan bantuan yang tampil pada bot.</div>
+      </div>
+
+      <div class="form-group">
+        <label>Google Gemini API Key (Opsional):</label>
+        <input type="password" id="gemini_key" name="gemini_key" placeholder="AIzaSyDxxxxxxxxxxxxxxxxxxxx">
+        <div class="hint">Untuk asisten AI cerdas tanya-jawab bahasa santai. Kosongkan jika tidak memakai.</div>
+      </div>
+
+      <div class="btn-row">
+        <button type="submit" class="btn-save">💾 Simpan Pengaturan</button>
+        <button type="button" id="btnTest" class="btn-test">🧪 Tes Kirim Telegram</button>
+      </div>
+    </form>
+
+    <div style="text-align: center;">
+      <a href="/" class="back-link" id="backToAcs">⬅️ Kembali ke Dashboard GenieACS</a>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('backToAcs').href = window.location.protocol + '//' + window.location.hostname + ':3000';
+
+    function showAlert(msg, isSuccess) {
+      const box = document.getElementById('alertBox');
+      box.textContent = msg;
+      box.className = 'alert ' + (isSuccess ? 'alert-success' : 'alert-error');
+      box.style.display = 'block';
+      box.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // Load initial data
+    fetch('/api/config')
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById('bot_enabled').value = data.enabled || 'true';
+        document.getElementById('bot_token').value = data.token || '';
+        document.getElementById('admin_id').value = data.admin_id || '';
+        document.getElementById('brand_name').value = data.brand_name || 'ALIJAYA NET';
+        document.getElementById('brand_phone').value = data.brand_phone || '081947215703';
+        document.getElementById('gemini_key').value = data.gemini_key || '';
+      })
+      .catch(e => showAlert('Gagal memuat konfigurasi: ' + e, false));
+
+    document.getElementById('botForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const payload = {
+        enabled: document.getElementById('bot_enabled').value,
+        token: document.getElementById('bot_token').value.trim(),
+        admin_id: document.getElementById('admin_id').value.trim(),
+        brand_name: document.getElementById('brand_name').value.trim(),
+        brand_phone: document.getElementById('brand_phone').value.trim(),
+        gemini_key: document.getElementById('gemini_key').value.trim()
+      };
+
+      fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      .then(r => r.json())
+      .then(res => {
+        if (res.success) {
+          showAlert('✅ Konfigurasi bot berhasil disimpan dan langsung aktif!', true);
+        } else {
+          showAlert('❌ Gagal: ' + (res.message || 'Terjadi kesalahan'), false);
+        }
+      })
+      .catch(e => showAlert('Error koneksi: ' + e, false));
+    });
+
+    document.getElementById('btnTest').addEventListener('click', function() {
+      showAlert('Mengirim pesan tes ke Telegram...', true);
+      fetch('/api/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: document.getElementById('bot_token').value.trim(),
+          admin_id: document.getElementById('admin_id').value.trim()
+        })
+      })
+      .then(r => r.json())
+      .then(res => {
+        if (res.success) {
+          showAlert('🎉 Berhasil! Pesan tes telah terkirim ke Telegram Anda.', true);
+        } else {
+          showAlert('❌ Gagal kirim tes: ' + (res.message || 'Periksa Token & Chat ID Anda'), false);
+        }
+      })
+      .catch(e => showAlert('Error saat tes kirim: ' + e, false));
+    });
+  </script>
+</body>
+</html>
+"""
+
+class BotConfigHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == "/" or self.path.startswith("/?"):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(HTML_CONFIG_PAGE.encode("utf-8"))
+        elif self.path == "/api/config":
+            cfgs = get_config()
+            data = {
+                "enabled": cfgs.get("agent.enabled", "true"),
+                "token": cfgs.get("agent.telegram.botToken", ""),
+                "admin_id": cfgs.get("agent.telegram.adminChatId", ""),
+                "brand_name": cfgs.get("agent.brand.name", BRAND_NAME),
+                "brand_phone": cfgs.get("agent.brand.phone", BRAND_PHONE),
+                "gemini_key": cfgs.get("agent.gemini.apiKey", "")
+            }
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(data).encode("utf-8"))
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length).decode("utf-8")
+        try:
+            req = json.loads(body)
+        except Exception:
+            req = {}
+
+        if self.path == "/api/config":
+            db = get_db()
+            if db is None:
+                self.send_json({"success": False, "message": "Gagal terhubung ke MongoDB"})
+                return
+
+            configs_to_save = {
+                "agent.enabled": req.get("enabled", "true"),
+                "agent.telegram.botToken": f'"{req.get("token", "").strip()}"',
+                "agent.telegram.adminChatId": f'"{req.get("admin_id", "").strip()}"',
+                "agent.brand.name": f'"{req.get("brand_name", BRAND_NAME).strip()}"',
+                "agent.brand.phone": f'"{req.get("brand_phone", BRAND_PHONE).strip()}"',
+                "agent.gemini.apiKey": f'"{req.get("gemini_key", "").strip()}"'
+            }
+
+            for k, v in configs_to_save.items():
+                db.config.update_one({"_id": k}, {"$set": {"value": v}}, upsert=True)
+
+            logger.info("Konfigurasi bot berhasil disimpan melalui Web UI (Port 7558)!")
+            self.send_json({"success": True, "message": "Konfigurasi berhasil disimpan"})
+
+        elif self.path == "/api/test":
+            token = req.get("token", "").strip()
+            admin_id = req.get("admin_id", "").strip()
+            if not token or not admin_id:
+                self.send_json({"success": False, "message": "Token dan Chat ID tidak boleh kosong!"})
+                return
+
+            ids = parse_admin_chat_ids(admin_id)
+            test_msg = f"🧪 *Tes Notifikasi Bot GenieACS*\n━━━━━━━━━━━━━━━━━━━━\nKoneksi berhasil! Bot siap digunakan ({BRAND_NAME})."
+            success_count = 0
+            err_msg = ""
+            for aid in ids:
+                url = f"https://api.telegram.org/bot{token}/sendMessage"
+                try:
+                    r = requests.post(url, json={"chat_id": aid, "text": test_msg, "parse_mode": "Markdown"}, timeout=8)
+                    if r.status_code == 200:
+                        success_count += 1
+                    else:
+                        err_msg = r.text
+                except Exception as e:
+                    err_msg = str(e)
+
+            if success_count > 0:
+                self.send_json({"success": True})
+            else:
+                self.send_json({"success": False, "message": err_msg})
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def send_json(self, data):
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(data).encode("utf-8"))
+
+    def log_message(self, *args):
+        pass
+
+def start_web_server(port=7558):
+    try:
+        server = HTTPServer(("0.0.0.0", port), BotConfigHandler)
+        logger.info(f"Bot Web Config UI berjalan di http://0.0.0.0:{port}")
+        server.serve_forever()
+    except Exception as e:
+        logger.error(f"Gagal menjalankan Bot Web Config server di port {port}: {e}")
+
 def main():
     logger.info("Starting ALIJAYA NET GenieACS AI Agent Service...")
+    web_thread = threading.Thread(target=start_web_server, args=(7558,), daemon=True)
+    web_thread.start()
     last_update_id = 0
     notified_online = False
     last_watchdog_time = 0
