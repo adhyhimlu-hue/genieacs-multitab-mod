@@ -131,78 +131,94 @@ Gunakan metode ini jika server Anda **sudah memiliki GenieACS aktif dan sudah ad
    bash apply-template.sh
    ```
 
-3. **Selesai**: Dalam hitungan detik seluruh tab informatif beserta **Telegram Bot AI Agent** akan langsung aktif! Silakan buka Web UI dan lakukan **Hard Refresh** (`Ctrl + F5`) di browser, lalu masukkan Token Telegram & Chat ID Anda di menu **Admin ➔ Config**.
+3. **Selesai**: Dalam hitungan detik seluruh tab informatif beserta **Dual Bot AI Agent (Telegram & WhatsApp)** akan langsung aktif! Silakan buka Web UI dan lakukan **Hard Refresh** (`Ctrl + F5`) di browser, lalu buka menu **🤖 Bot AI & WA** di navbar atas atau akses port `http://<IP-SERVER>:7558`.
 
 ---
 
-## 🤖 Asisten AI Telegram GenieACS (Powered by Gemini)
+## 🤖 Dual Bot AI GenieACS: Telegram & WhatsApp (Baileys Gateway)
 
-Repositori ini sudah dilengkapi modul **Asisten AI Telegram** yang otomatis terpasang sebagai layanan sistem (`genieacs-agent.service`). Anda bisa mengontrol dan memantau seluruh modem pelanggan langsung dari chat Telegram menggunakan nama **Username PPPoE**:
+Repositori ini kini dilengkapi modul **Dual Bot AI Agent (Telegram & WhatsApp Baileys)** yang otomatis terpasang sebagai layanan sistem (`genieacs-agent.service` dan `genieacs-whatsapp.service`). Anda bisa mengontrol dan memantau seluruh modem pelanggan langsung dari chat Telegram maupun WhatsApp!
 
-### 🛠️ Fitur Asisten AI Telegram:
-1. **Menu Tombol Cepat Interaktif**:
-   * Cukup ketik /menu atau /start, bot menampilkan keyboard interaktif cepat (Cek Modem, Redaman Kritis, Klien WiFi, ONT Baru, Add WAN, Reboot, Ubah WiFi, Status STB).
+### 📱 Fitur Utama Bot WhatsApp (Baileys Engine):
+1. **Pindai Kode QR Langsung dari Web Browser (Port 7558)**:
+   * Tidak perlu lagi membuka terminal SSH untuk scan QR! Cukup buka `http://<IP-SERVER>:7558` di browser Anda.
+   * Tab **📱 WhatsApp (Baileys)** menampilkan kode QR live beresolusi tinggi yang otomatis me-refresh statusnya setiap 3 detik.
+   * Begitu tersambung, tampilan langsung berubah menjadi badge hijau **TERHUBUNG (CONNECTED) 🟢** dengan nama akun dan nomor bot Anda, serta tombol *Logout / Putus Koneksi*.
+2. **Pengenalan Nomor Admin & Pengenalan Otomatis Akun Bot Sendiri (Self-Chat)**:
+   * Admin didaftarkan melalui form Web UI atau database.
+   * Mendukung pesan ke nomor bot sendiri (*Message yourself* / self-chat) yang otomatis dikenali sebagai admin resmi.
+3. **Penyimpanan Pemetaan LID Otomatis (`waLidStore`)**:
+   * Menangani sistem WhatsApp Multi-Device yang kerap mengirim pesan dengan akhiran `@lid` alih-alih `@s.whatsapp.net`.
+   * Otomatis memetakan `@lid` ke nomor asli dan nama pelanggan secara real-time.
+4. **Layanan Mandiri Pelanggan (Customer Self-Service)**:
+   * Pelanggan dapat mendaftarkan nomor WhatsApp mereka dengan mengetik: `daftar <id_pppoe>`
+   * Setelah terdaftar, pelanggan dapat:
+     * Mengetik `cek` ➔ Melihat status internet, nama WiFi (SSID), sandi, dan redaman ONT mereka sendiri.
+     * Mengetik `reboot` ➔ Me-restart modem mereka dari jarak jauh secara mandiri jika internet terasa lambat.
+     * Mengetik `wifi <nama_baru> <sandi_baru>` ➔ Mengubah nama WiFi dan kata sandi mandiri.
+
+---
+
+### 🛠️ Fitur Perintah Admin Lengkap (Telegram & WhatsApp):
+1. **Menu Tombol & Bantuan Interaktif**:
+   * Ketik `/menu` atau `menu` (bisa tanpa garis miring di WhatsApp).
 2. **Cek Identitas Pelanggan & Redaman Super Jelas**:
-   * Ketik: /cek <username_pppoe_atau_sn> *(contoh: /cek cucimotor)*
-   * Menampilkan header identitas pelanggan yang sangat jelas (**👤 PELANGGAN : CUCIMOTOR**), Status Online/Offline, Redaman RX Power (dBm) + Indikator Kualitas (Sangat Bagus 🟢 / Normal 🟡 / Kritis 🔴), Suhu, IP WAN, Uptime, WiFi SSID, Sandi, User Terkoneksi, Tipe Hardware, SN, dan MAC Address.
-   * Dilengkapi tombol inline: **Reboot**, **Refresh Data**, **Cek Klien HP**, **Set WAN PPPoE**, **Ganti SSID**, **Ganti Sandi**, **On/Off WiFi**, dan **Factory Reset**.
+   * Ketik: `cek <username_pppoe_atau_sn>` *(contoh: `cek cucimotor`)*
+   * Menampilkan header identitas pelanggan (**👤 PELANGGAN : CUCIMOTOR**), Status Online/Offline, Redaman RX Power (dBm) + Indikator Kualitas (Sangat Bagus 🟢 / Normal 🟡 / Kritis 🔴), Suhu, IP WAN, Uptime, WiFi SSID, Sandi, User Terkoneksi, Tipe Hardware, SN, dan MAC Address.
 3. **Audit Massal Redaman Kritis / Drop**:
-   * Ketik: /redaman atau /los
-   * Menampilkan rangkuman seluruh modem pelanggan yang redamannya buruk (< -26 dBm atau -28 dBm) diurutkan dari yang paling kritis untuk memudahkan inspeksi teknisi lapangan.
+   * Ketik: `redaman` atau `/redaman`
+   * Menampilkan rangkuman seluruh modem pelanggan yang redamannya buruk (< -26 dBm).
 4. **Deteksi Modem Baru Belum Disetting (Unconfigured ONT)**:
-   * Ketik: /ontbaru
-   * Menampilkan daftar ONT yang baru dicolok ke OLT/server yang belum memiliki akun PPPoE, lengkap dengan SN dan format cepat /addwan.
+   * Ketik: `ontbaru` atau `/ontbaru`
+   * Menampilkan daftar ONT baru dicolok yang belum memiliki akun PPPoE.
 5. **Cek Daftar Klien WiFi Terkoneksi (Associated Devices / Hosts)**:
-   * Ketik: /klien <username_pppoe> *(contoh: /klien umikulsum)*
-   * Menampilkan daftar detail HP/laptop yang sedang terhubung ke WiFi modem (Nama Device, IP Lokal, MAC Address, dan status aktif).
+   * Ketik: `klien <username_pppoe>` *(contoh: `klien cucimotor`)*
+   * Menampilkan daftar HP/laptop yang terhubung ke modem (Nama Device, IP Lokal, MAC).
 6. **Tambah / Set WAN PPPoE Jarak Jauh**:
-   * Ketik: /addwan <sn_atau_user> <user_pppoe> <pass_pppoe> [vlan_id]
-7. **Matikan / Hidupkan Radio Pemancar WiFi Jarak Jauh**:
-   * Ketik: /wifioff <username_pppoe> *(matikan pemancar WiFi)*
-   * Ketik: /wifion <username_pppoe> *(hidupkan pemancar WiFi)*
+   * Ketik: `addwan <sn_atau_user> <user_pppoe> <pass_pppoe> [vlan_id]`
+7. **Matikan / Hidupkan Radio Pemancar WiFi**:
+   * Ketik: `wifioff <user>` *(matikan pemancar WiFi)*
+   * Ketik: `wifion <user>` *(hidupkan pemancar WiFi)*
 8. **Ganti SSID & Sandi WiFi**:
-   * Ketik: /wifi <username> <ssid> <sandi>
-   * Atau ganti terpisah: /ssid <user> <nama_baru> & /pass <user> <sandi_baru>
+   * Ketik: `wifi <username> <ssid> <sandi>`
+   * Atau ganti terpisah: `ssid <user> <nama_baru>` & `pass <user> <sandi_baru>`
 9. **Tes Diagnostik Ping TR-069**:
-   * Ketik: /ping <username_pppoe> [host] *(contoh: /ping cucimotor 8.8.8.8)*
-10. **Ganti Sandi SuperAdmin Web ONT Jarak Jauh**:
-    * Ketik: /superadmin <username_pppoe> <sandi_baru>
+   * Ketik: `ping <user> [host]` *(contoh: `ping cucimotor 8.8.8.8`)*
+10. **Ganti Sandi SuperAdmin Web ONT**:
+    * Ketik: `superadmin <user> <sandi_baru>`
 11. **Restart & Factory Reset Jarak Jauh**:
-    * Ketik: /reboot <username_pppoe>
-    * Ketik: /factoryreset <username_pppoe> *(dilengkapi tombol konfirmasi Ya/Batal agar aman dari salah pencet)*
+    * Ketik: `reboot <user>`
+    * Ketik: `factoryreset <user>`
 12. **Background Watchdog & Proactive Auto-Alerts**:
-    * **Notifikasi Otomatis ONT Baru**: Bot otomatis memberi tahu admin saat ada ONT baru dicolok ke jaringan tanpa PPPoE.
-    * **Notifikasi Otomatis Redaman Drop**: Bot otomatis memberi tahu jika ada modem yang redamannya drop kritis (< -28 dBm).
-13. **Dukungan Multi-Admin & Grup Telegram**:
-    * Konfigurasi gent.telegram.adminChatId mendukung beberapa Chat ID sekaligus dipisah koma (contoh: 12345678, -100987654321) sehingga bisa digunakan di chat pribadi teknisi maupun Grup Telegram Tim.
+    * **Notifikasi Otomatis Redaman Drop**: Bot otomatis mengirim peringatan ke Telegram dan WhatsApp Admin jika ada modem yang redamannya drop kritis (< -27 dBm).
 
-### ⚙️ Cara Konfigurasi Token & Akun Bot Telegram:
+---
 
-Tersedia **3 Cara Fleksibel** untuk mengatur Token & Chat ID Anda:
+### ⚙️ Cara Konfigurasi Token Telegram & WhatsApp:
 
-#### CARA 1 (Paling Mudah - Melalui Halaman Web UI Port 7558):
+Tersedia **3 Cara Fleksibel**:
+
+#### CARA 1 (Paling Mudah - Melalui Web UI Port 7558):
 Anda tidak perlu lagi membuka terminal SSH! Cukup buka browser:
-* **Akses Form Web**: http://<IP-SERVER>:7558
-* Atau dari GenieACS Web UI, klik menu **Admin ➔ 🤖 Bot Telegram** di pojok kanan atas.
-* **Fitur di Halaman Web Ini**:
-  * Input Token Bot, Chat ID Admin/Grup, Brand Name, Nomor CS, dan Gemini API Key tanpa perlu pusing tanda petik.
-  * Tombol **💾 Simpan Pengaturan**: Langsung tersimpan ke database & aktif seketika.
-  * Tombol **🧪 Tes Kirim Telegram**: Mengetes langsung apakah bot berhasil mengirim pesan ke Telegram Anda.
+* **Akses Form Web**: `http://<IP-SERVER>:7558`
+* Atau dari GenieACS Web UI, klik tombol menu **🤖 Bot AI & WA** di navbar atas.
+* **Fitur Tab Web**:
+  * **Tab WhatsApp**: Menampilkan Live QR Code Baileys, tombol Logout, dan form Nomor Admin WhatsApp.
+  * **Tab Telegram**: Form Token Bot, Admin Chat ID, dan tombol Tes Kirim.
+  * **Tab Brand & AI**: Nama Usaha, Nomor CS/WA Bantuan, dan Gemini API Key.
+  * Tombol **💾 Simpan Semua Pengaturan**: Langsung tersimpan ke MongoDB & aktif seketika.
 
 #### CARA 2 (Melalui Terminal SSH):
 Cukup jalankan satu perintah ini di terminal server:
-`ash
+```bash
 set-bot
-`
-Ikuti panduan interaktif di layar untuk mengisi Token, Chat ID, Brand, dan Nomor CS.
+```
+Ikuti panduan interaktif di layar untuk mengisi Token Telegram, Chat ID, Nomor Admin WhatsApp, Brand, dan Nomor CS.
 
 #### CARA 3 (Melalui Menu Admin ➔ Config GenieACS):
-1. Masuk ke Web UI GenieACS ➔ menu **Admin** ➔ **Config** (http://<IP-SERVER>:3000/#!/admin/config).
-2. Ketik gent pada kotak pencarian filter.
-3. Klik baris yang ingin diubah dan masukkan nilainya dengan tanda petik tunggal ('...'):
-   * gent.telegram.botToken : '1938127147:AAFMD7X_xxxxxxxxxxxxxxumkVwbZU'
-   * gent.telegram.adminChatId : '567858628'
-4. Klik tombol **Save**.
+1. Masuk ke Web UI GenieACS ➔ menu **Admin** ➔ **Config** (`http://<IP-SERVER>:3000/#!/admin/config`).
+2. Ketik `agent` pada kotak pencarian filter.
+3. Ubah nilai parameter `agent.telegram.*` atau `agent.whatsapp.*` sesuai kebutuhan.
 
 ---
 
@@ -221,8 +237,12 @@ Ikuti panduan interaktif di layar untuk mengisi Token, Chat ID, Brand, dan Nomor
 ├── README.md                     # Dokumentasi resmi & panduan lengkap
 ├── install-genieacs-armbian.sh   # Script auto-installer GenieACS + MongoDB + Agent untuk server baru
 ├── apply-template.sh             # Script pengubah tema & multi-tab untuk server yang sudah aktif
-├── agent.py                      # Skrip GenieACS AI Telegram Agent (bertenaga Gemini)
+├── agent.py                      # Skrip GenieACS Dual Bot Agent (Telegram, Web UI 7558, TR-069 Engine)
 ├── set-bot.py                    # Tool interaktif CLI (perintah 'set-bot') untuk setting bot tanpa ribet
+├── whatsapp/                     # Modul WhatsApp Baileys Engine
+│   ├── package.json              # Dependensi @whiskeysockets/baileys@7.0.0-rc11, pino, qrcode
+│   ├── waLidStore.mjs            # Penyimpanan pemetaan LID Multi-Device WhatsApp
+│   └── whatsapp-bot.mjs          # Socket engine Baileys, auto-reconnect, QR generator, gateway HTTP 7559
 ├── genieacs_ui_mod.tar.gz        # Bundle frontend Multi-Tab ALIJAYA NET (app.js, css, logo, binary modifikasi)
 ├── genieacs_template_ui.tar.gz   # Arsip template UI (~17 KB) tanpa data perangkat
 └── genieacs_db.tar.gz            # Backup database template (~21 KB) siap pakai tanpa data ONT asing

@@ -475,6 +475,18 @@ if [ -f /opt/genieacs-agent/set-bot.py ]; then
   ln -sf /opt/genieacs-agent/set-bot.py /usr/local/bin/set-bot
 fi
 
+# Pasang WhatsApp Baileys Gateway Agent
+if [ -d "${SCRIPT_DIR}/whatsapp" ]; then
+  cp -r "${SCRIPT_DIR}/whatsapp"/* /opt/genieacs-agent/
+elif [ -d "./whatsapp" ]; then
+  cp -r ./whatsapp/* /opt/genieacs-agent/
+fi
+
+if command -v npm >/dev/null 2>&1; then
+  echo -e "${BLUE}Menginstall dependensi WhatsApp Baileys di /opt/genieacs-agent...${NC}"
+  (cd /opt/genieacs-agent && npm install @whiskeysockets/baileys@7.0.0-rc11 pino@^9.6.0 qrcode@^1.5.4 qrcode-terminal@^0.12.0 --ignore-scripts --no-audit --no-fund 2>/dev/null || true)
+fi
+
 cat << 'EOF' > /etc/systemd/system/genieacs-agent.service
 [Unit]
 Description=GenieACS AI Telegram Agent (ALIJAYA NET)
@@ -492,9 +504,27 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
+cat << 'EOF' > /etc/systemd/system/genieacs-whatsapp.service
+[Unit]
+Description=GenieACS WhatsApp AI Agent (Baileys Gateway - ALIJAYA NET)
+After=network.target mongod.service genieacs-nbi.service genieacs-agent.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/genieacs-agent
+ExecStart=/usr/bin/node /opt/genieacs-agent/whatsapp-bot.mjs
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 systemctl daemon-reload
-systemctl enable genieacs-agent.service
-systemctl restart genieacs-agent.service 2>/dev/null || true
+systemctl enable genieacs-agent.service genieacs-whatsapp.service 2>/dev/null || true
+systemctl restart genieacs-agent.service genieacs-whatsapp.service 2>/dev/null || true
 
 # 9. Selesai & Ringkasan Status
 echo -e "\n${BLUE}[8/8] Memverifikasi status port & layanan...${NC}"
@@ -510,9 +540,10 @@ echo -e "${CYAN}║${NC}  🔑 ${BOLD}Login Bawaan${NC}         : ${GREEN}admin$
 echo -e "${CYAN}║${NC}  📡 ${BOLD}URL CWMP (Modem ONT)${NC} : ${YELLOW}${BOLD}http://${IP_ADDRESS}:7547${NC}"
 echo -e "${CYAN}║${NC}  🔌 ${BOLD}Port NBI (REST API)${NC}  : ${WHITE}http://${IP_ADDRESS}:7557${NC}"
 echo -e "${CYAN}║${NC}  📁 ${BOLD}Port FS (File Server)${NC}: ${WHITE}http://${IP_ADDRESS}:7567${NC}"
-echo -e "${CYAN}║${NC}  🤖 ${BOLD}AI Telegram Agent${NC}    : ${GREEN}AKTIF (Port 7558 / ketik 'set-bot')${NC}"
-echo -e "${CYAN}║${NC}  ⚙️ ${BOLD}Web Pengaturan Bot${NC}   : ${YELLOW}${BOLD}http://${IP_ADDRESS}:7558${NC} (atau via Menu UI)"
-echo -e "${CYAN}║${NC}  ⚡ ${BOLD}Status Layanan${NC}       : ${GREEN}MongoDB & 4 Service GenieACS AKTIF (OK)${NC}"
+echo -e "${CYAN}║${NC}  ✈️ ${BOLD}Telegram Agent${NC}       : ${GREEN}AKTIF (Ketik 'set-bot' di terminal)${NC}"
+echo -e "${CYAN}║${NC}  📱 ${BOLD}WhatsApp Agent${NC}       : ${GREEN}AKTIF (Baileys Gateway Port 7559)${NC}"
+echo -e "${CYAN}║${NC}  ⚙️ ${BOLD}Web Pengaturan Bot${NC}   : ${YELLOW}${BOLD}http://${IP_ADDRESS}:7558${NC} (Menu UI '🤖 Bot AI & WA')"
+echo -e "${CYAN}║${NC}  ⚡ ${BOLD}Status Layanan${NC}       : ${GREEN}GenieACS, MongoDB, Telegram & WA AKTIF (OK)${NC}"
 echo -e "${CYAN}║${NC}  🛡️ ${BOLD}Proteksi Storage${NC}     : ${GREEN}Logrotate & Ramlog AKTIF (Bebas Disk Penuh)${NC}"
 echo -e "${CYAN}╠══════════════════════════════════════════════════════════════════════╣${NC}"
 echo -e "${CYAN}║${NC}  👑 ${BOLD}DEVELOPER & SUPPORT${NC}  : ${GREEN}${BOLD}ALIJAYA NET${NC}"

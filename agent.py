@@ -896,38 +896,268 @@ def handle_callback_query(token, sender_id, cb_data, callback_id):
         ))
         return
 
+def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_key="", gemini_model="gemini-1.5-flash", registered_tag=None):
+    raw = str(user_text or "").strip()
+    if not raw:
+        return ("⚠️ Pesan kosong.", None)
+
+    txt = raw
+    clean_txt = txt.lstrip("/!#").strip()
+    parts = clean_txt.split(maxsplit=1)
+    cmd = parts[0].lower() if parts else ""
+    rest = parts[1].strip() if len(parts) > 1 else ""
+
+    # 1. Menu & Help
+    if cmd in ["menu", "start", "bantuan", "help"]:
+        if is_admin:
+            menu_text = (
+                f"🤖 *{BRAND_NAME} - GenieACS TR-069 AI Bot*\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "📌 *Daftar Perintah Admin:*\n"
+                "• `cek <user_pppoe/sn>` ➔ Status lengkap & redaman ONT\n"
+                "• `redaman` ➔ Audit massal redaman kritis (< -26 dBm)\n"
+                "• `ontbaru` ➔ Cek modem baru belum tersetting\n"
+                "• `klien <user>` ➔ Daftar HP/laptop terhubung WiFi\n"
+                "• `reboot <user>` ➔ Restart modem pelanggan\n"
+                "• `wifion <user>` & `wifioff <user>` ➔ On/Off Radio WiFi\n"
+                "• `wifi <user> <ssid> <sandi>` ➔ Ubah WiFi & Sandi\n"
+                "• `ssid <user> <nama>` ➔ Ubah nama WiFi\n"
+                "• `pass <user> <sandi>` ➔ Ubah sandi WiFi\n"
+                "• `addwan <sn> <user> <pass> [vlan]` ➔ Tambah/Set WAN PPPoE\n"
+                "• `superadmin <user> <sandi>` ➔ Ubah sandi web ONT\n"
+                "• `ping <user> [host]` ➔ Uji ping TR-069 jarak jauh\n"
+                "• `factoryreset <user>` ➔ Reset setelan pabrik\n"
+                "• `server` / `status` ➔ Status CPU, RAM, Suhu STB\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                f"👑 *CS: {BRAND_NAME} ({BRAND_PHONE})*"
+            )
+            return (menu_text, get_main_menu_keyboard())
+        else:
+            cust_menu = (
+                f"👋 *Halo! Selamat Datang di Layanan Mandiri {BRAND_NAME}*\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "Fitur yang dapat Anda gunakan:\n"
+                "• `cek` ➔ Cek status koneksi, SSID & redaman WiFi Anda\n"
+                "• `reboot` ➔ Restart modem Anda secara mandiri jika internet lambat\n"
+                "• `wifi <nama_baru> <sandi_baru>` ➔ Ubah nama WiFi & kata sandi\n"
+                "• `daftar <id_pelanggan>` ➔ Hubungkan nomor WA ini ke ID internet Anda\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                f"📞 *Butuh Bantuan Teknisi?* Hubungi CS di {BRAND_PHONE}"
+            )
+            return (cust_menu, None)
+
+    # 2. Cek Redaman Kritis
+    if cmd in ["redaman", "los"]:
+        if not is_admin:
+            return ("⛔ Perintah ini khusus untuk Admin / Teknisi.", None)
+        return (get_bad_rx_summary(), get_main_menu_keyboard())
+
+    # 3. Modem Belum Setting / ONT Baru
+    if cmd in ["ontbaru", "unconf", "newont"]:
+        if not is_admin:
+            return ("⛔ Perintah ini khusus untuk Admin / Teknisi.", None)
+        return (get_unconfigured_onts(), get_main_menu_keyboard())
+
+    # 4. Cek Server Stats
+    if cmd in ["server", "status"]:
+        if not rest and is_admin:
+            return (get_server_stats(), get_main_menu_keyboard())
+
+    # 5. Cek Modem / ONT Status
+    if cmd in ["cek", "info"]:
+        target = rest
+        if not target and registered_tag:
+            target = registered_tag
+
+        if not target:
+            if is_admin:
+                return ("⚠️ Silakan sertakan Username PPPoE atau Serial Number.\n_Contoh:_ `cek cucimotor`", None)
+            else:
+                return ("⚠️ Nomor Anda belum terhubung ke ID Pelanggan. Silakan ketik `daftar <id_pppoe>` terlebih dahulu.", None)
+
+        dev = find_device(target)
+        if not dev:
+            return (f"❌ Modem `{target}` tidak ditemukan di database GenieACS.", None)
+
+        summary_text, pppoe_user, dev_id, wifi_on = get_device_summary(dev)
+        kb = get_device_inline_keyboard(pppoe_user, dev_id, wifi_on) if is_admin else None
+        return (summary_text, kb)
+
+    # 6. Klien WiFi Terhubung
+    if cmd in ["klien", "client", "clients"]:
+        target = rest or registered_tag
+        if not target:
+            return ("⚠️ Gunakan: `klien <username_pppoe/sn>`", None)
+        dev = find_device(target)
+        if not dev:
+            return (f"❌ Modem `{target}` tidak ditemukan.", None)
+        return (get_device_clients(dev), None)
+
+    # 7. Reboot ONT
+    if cmd in ["reboot", "restart"]:
+        target = rest or registered_tag
+        if not target:
+            return ("⚠️ Gunakan: `reboot <username_pppoe/sn>`", None)
+        dev = find_device(target)
+        if not dev:
+            return (f"❌ Modem `{target}` tidak ditemukan.", None)
+        ok, msg = reboot_device_task(dev)
+        return (f"{'✅' if ok else '❌'} {msg}", None)
+
+    # 8. WiFi ON / OFF
+    if cmd == "wifioff":
+        if not is_admin:
+            return ("⛔ Perintah ini khusus untuk Admin.", None)
+        target = rest
+        if not target:
+            return ("⚠️ Gunakan: `wifioff <username/sn>`", None)
+        dev = find_device(target)
+        if not dev:
+            return (f"❌ Modem `{target}` tidak ditemukan.", None)
+        ok, msg = set_wifi_power(dev, enable=False)
+        return (f"{'✅' if ok else '❌'} {msg}", None)
+
+    if cmd == "wifion":
+        if not is_admin:
+            return ("⛔ Perintah ini khusus untuk Admin.", None)
+        target = rest
+        if not target:
+            return ("⚠️ Gunakan: `wifion <username/sn>`", None)
+        dev = find_device(target)
+        if not dev:
+            return (f"❌ Modem `{target}` tidak ditemukan.", None)
+        ok, msg = set_wifi_power(dev, enable=True)
+        return (f"{'✅' if ok else '❌'} {msg}", None)
+
+    # 9. Ubah WiFi (SSID & Password)
+    if cmd == "wifi":
+        sub_parts = rest.split()
+        if is_admin and len(sub_parts) >= 3:
+            target, new_ssid, new_pass = sub_parts[0], sub_parts[1], sub_parts[2]
+            dev = find_device(target)
+            if not dev:
+                return (f"❌ Modem `{target}` tidak ditemukan.", None)
+            ok, msg = set_wifi_credentials(dev, new_ssid=new_ssid, new_password=new_pass)
+            if ok:
+                return (f"✅ *Berhasil Mengubah Pengaturan WiFi!*\n• Pelanggan: `{target}`\n• SSID: `{new_ssid}`\n• Sandi: `{new_pass}`\nStatus: Terkirim via TR-069.", None)
+            return (f"❌ Gagal: {msg}", None)
+        elif not is_admin and len(sub_parts) >= 2 and registered_tag:
+            new_ssid, new_pass = sub_parts[0], sub_parts[1]
+            dev = find_device(registered_tag)
+            if not dev:
+                return ("❌ Perangkat Anda tidak ditemukan di sistem.", None)
+            ok, msg = set_wifi_credentials(dev, new_ssid=new_ssid, new_password=new_pass)
+            if ok:
+                return (f"✅ *WiFi Anda Berhasil Diperbarui!*\n• Nama WiFi: *{new_ssid}*\n• Sandi: *{new_pass}*\nSilakan sambungkan ulang perangkat Anda.", None)
+            return (f"❌ Gagal memperbarui WiFi: {msg}", None)
+        else:
+            if is_admin:
+                return ("⚠️ Format salah. Gunakan:\n`wifi <user> <nama_wifi_baru> <sandi_baru>`\n_Contoh:_ `wifi cucimotor Alijaya-Net 12345678`", None)
+            else:
+                return ("⚠️ Format salah. Gunakan:\n`wifi <nama_wifi_baru> <sandi_baru>`\n_Contoh:_ `wifi WiFi-Saya SandiRahasia123`", None)
+
+    # 10. Ubah SSID saja
+    if cmd == "ssid":
+        sub_parts = rest.split(maxsplit=1)
+        if len(sub_parts) >= 2:
+            target, new_ssid = sub_parts[0], sub_parts[1]
+            dev = find_device(target)
+            if not dev:
+                return (f"❌ Modem `{target}` tidak ditemukan.", None)
+            ok, msg = set_wifi_credentials(dev, new_ssid=new_ssid)
+            if ok:
+                return (f"✅ *Berhasil Mengubah SSID!*\n• Pelanggan: `{target}`\n• SSID Baru: `{new_ssid}`", None)
+            return (f"❌ Gagal: {msg}", None)
+        return ("⚠️ Gunakan: `ssid <username_pppoe> <nama_baru>`", None)
+
+    # 11. Ubah Password saja
+    if cmd == "pass":
+        sub_parts = rest.split(maxsplit=1)
+        if len(sub_parts) >= 2:
+            target, new_pass = sub_parts[0], sub_parts[1]
+            dev = find_device(target)
+            if not dev:
+                return (f"❌ Modem `{target}` tidak ditemukan.", None)
+            ok, msg = set_wifi_credentials(dev, new_password=new_pass)
+            if ok:
+                return (f"✅ *Berhasil Mengubah Sandi WiFi!*\n• Pelanggan: `{target}`\n• Sandi Baru: `{new_pass}`", None)
+            return (f"❌ Gagal: {msg}", None)
+        return ("⚠️ Gunakan: `pass <username_pppoe> <sandi_baru>`", None)
+
+    # 12. Add/Set WAN PPPoE
+    if cmd == "addwan":
+        if not is_admin:
+            return ("⛔ Perintah ini khusus untuk Admin.", None)
+        sub_parts = rest.split()
+        if len(sub_parts) >= 3:
+            target = sub_parts[0]
+            pppoe_user = sub_parts[1]
+            pppoe_pass = sub_parts[2]
+            vlan_id = sub_parts[3] if len(sub_parts) > 3 else None
+            dev = find_device(target)
+            if not dev:
+                return (f"❌ Modem `{target}` tidak ditemukan.", None)
+            ok, msg = add_or_set_wan_pppoe(dev, pppoe_user, pppoe_pass, vlan_id)
+            return (f"{'✅' if ok else '❌'} {msg}", None)
+        return ("⚠️ Format salah. Gunakan:\n`addwan <sn/user> <user_pppoe> <pass_pppoe> [vlan_id]`", None)
+
+    # 13. Superadmin Password
+    if cmd == "superadmin":
+        if not is_admin:
+            return ("⛔ Perintah ini khusus untuk Admin.", None)
+        sub_parts = rest.split(maxsplit=1)
+        if len(sub_parts) >= 2:
+            target, new_pass = sub_parts[0], sub_parts[1]
+            dev = find_device(target)
+            if not dev:
+                return (f"❌ Modem `{target}` tidak ditemukan.", None)
+            ok, msg = set_superadmin_password(dev, new_pass)
+            return (f"{'✅' if ok else '❌'} {msg}", None)
+        return ("⚠️ Gunakan: `superadmin <username/sn> <password_baru>`", None)
+
+    # 14. Factory Reset
+    if cmd == "factoryreset":
+        if not is_admin:
+            return ("⛔ Perintah ini khusus untuk Admin.", None)
+        target = rest
+        if not target:
+            return ("⚠️ Gunakan: `factoryreset <username/sn>`", None)
+        dev = find_device(target)
+        if not dev:
+            return (f"❌ Modem `{target}` tidak ditemukan.", None)
+        ok, msg = factory_reset_device(dev)
+        return (f"{'✅' if ok else '❌'} {msg}", None)
+
+    # 15. Ping Diagnostics
+    if cmd == "ping":
+        sub_parts = rest.split()
+        if sub_parts:
+            target = sub_parts[0]
+            host = sub_parts[1] if len(sub_parts) > 1 else "8.8.8.8"
+            dev = find_device(target)
+            if not dev:
+                return (f"❌ Modem `{target}` tidak ditemukan.", None)
+            ok, msg = ping_diagnostics_task(dev, host)
+            return (f"{'✅' if ok else '❌'} {msg}", None)
+        return ("⚠️ Gunakan: `ping <username/sn> [host]`", None)
+
+    # 16. Fallback Gemini AI / Percakapan Cerdas
+    if gemini_key:
+        ai_reply = ask_gemini_ai(gemini_key, gemini_model, raw, sender_id)
+        return (ai_reply, None)
+
+    # Default if not understood
+    if is_admin:
+        return (f"⚠️ Perintah `{raw}` tidak dikenali. Ketik `menu` untuk melihat daftar perintah.", get_main_menu_keyboard())
+    else:
+        return (f"👋 Halo! Nomor Anda belum terdaftar. Ketik `daftar <id_pelanggan>` untuk menghubungkan akun internet Anda.", None)
+
+
 def handle_incoming_message(token, chat_id, user_text, gemini_key, model_name):
     txt = user_text.strip()
     state = USER_STATES.get(chat_id)
 
-    # 1. Menu Buttons Handlers
-    if txt in ["/start", "/menu", "❓ Bantuan / Help", "/help"]:
-        USER_STATES.pop(chat_id, None)
-        welcome = (
-            f"🤖 *{BRAND_NAME} - GenieACS TR-069 AI Bot*\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            "Gunakan tombol menu di bawah untuk aksi cepat, atau ketik perintah langsung:\n\n"
-            "📌 *Daftar Perintah Lengkap:*\n"
-            "• `/cek <user_atau_sn>` ➔ Rincian detail & redaman ONT\n"
-            "• `/redaman` ➔ Audit massal redaman kritis (< -26 dBm)\n"
-            "• `/ontbaru` ➔ Cek modem baru belum disetting\n"
-            "• `/klien <user>` ➔ Daftar HP/laptop terkoneksi ke WiFi\n"
-            "• `/addwan <sn> <user> <pass> [vlan]` ➔ Tambah/Set WAN\n"
-            "• `/wifioff <user>` & `/wifion <user>` ➔ On/Off Radio WiFi\n"
-            "• `/ssid <user> <nama>` ➔ Ubah nama WiFi\n"
-            "• `/pass <user> <sandi>` ➔ Ubah sandi WiFi\n"
-            "• `/wifi <user> <ssid> <sandi>` ➔ Ubah WiFi & Sandi\n"
-            "• `/ping <user> [host]` ➔ Tes Ping TR-069 jarak jauh\n"
-            "• `/superadmin <user> <sandi>` ➔ Ubah sandi web ONT\n"
-            "• `/reboot <user>` ➔ Restart modem pelanggan\n"
-            "• `/factoryreset <user>` ➔ Reset setelan pabrik\n"
-            "• `/server` ➔ Status CPU, RAM, Suhu STB\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            f"👑 *Pengembang / CS: {BRAND_NAME} ({BRAND_PHONE})*"
-        )
-        send_telegram(token, chat_id, welcome, reply_markup=get_main_menu_keyboard())
-        return
-
+    # Menu Buttons Handlers khusus Telegram
     if txt in ["🔍 Cek Modem"]:
         USER_STATES[chat_id] = {"action": "wait_cek"}
         send_telegram(token, chat_id, "🔍 *Cek Modem*: Silakan ketik Username PPPoE atau Serial Number (contoh: `cucimotor`):")
@@ -941,391 +1171,59 @@ def handle_incoming_message(token, chat_id, user_text, gemini_key, model_name):
         send_telegram(token, chat_id, get_unconfigured_onts(), reply_markup=get_main_menu_keyboard())
         return
 
-    if txt in ["👥 Daftar Klien WiFi"]:
-        USER_STATES[chat_id] = {"action": "wait_klien"}
-        send_telegram(token, chat_id, "👥 *Cek Klien*: Silakan ketik Username PPPoE atau Serial Number untuk melihat daftar HP terhubung:")
-        return
-
-    if txt == "🔄 Reboot Modem":
-        USER_STATES[chat_id] = {"action": "wait_reboot"}
-        send_telegram(token, chat_id, "🔄 *Reboot Modem*: Silakan ketik Username PPPoE atau Serial Number (contoh: `cucimotor`):")
-        return
-
-    if txt == "🌐 Tambah / Set WAN":
-        send_telegram(token, chat_id, (
-            "🌐 *Tambah / Set Koneksi WAN PPPoE*\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            "Format:\n"
-            "`/addwan <SN_atau_User> <User_PPPoE> <Pass_PPPoE> [VLAN_ID]`\n\n"
-            "_Contoh Tanpa VLAN:_\n"
-            "`/addwan CIOT157197A8 budi01 12345678`\n\n"
-            "_Contoh Dengan VLAN:_\n"
-            "`/addwan CIOT157197A8 budi01 12345678 100`\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            "*(Bisa gunakan Serial Number modem baru atau Username yang sudah ada)*"
-        ))
-        return
-
-    if txt == "📶 Ubah WiFi / Sandi":
-        send_telegram(token, chat_id, (
-            "📶 *Ubah Nama & Sandi WiFi*\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            "• Ganti SSID saja: `/ssid <user> <nama_baru>`\n"
-            "• Ganti Sandi saja: `/pass <user> <sandi_baru>`\n"
-            "• Ganti Keduanya : `/wifi <user> <ssid_baru> <sandi_baru>`\n"
-            "• On/Off Pemancar: `/wifioff <user>` atau `/wifion <user>`"
-        ))
-        return
-
-    if txt in ["📊 Status Server STB", "/server"]:
+    if txt in ["📊 Status Server", "/server", "/status"]:
         send_telegram(token, chat_id, get_server_stats(), reply_markup=get_main_menu_keyboard())
         return
 
-    # 2. State-Based Replies (Conversational context)
-    if state:
-        st_act = state.get("action")
-        target = state.get("target")
-
-        if st_act == "wait_cek":
-            USER_STATES.pop(chat_id, None)
-            dev = find_device(txt)
-            pppoe, summary, wifi_on = get_device_summary(dev)
-            kb = get_device_inline_keyboard(pppoe, dev.get("_id") if dev else None, wifi_on) if dev else None
-            send_telegram(token, chat_id, summary, reply_markup=kb)
-            return
-
-        if st_act == "wait_klien":
-            USER_STATES.pop(chat_id, None)
-            dev = find_device(txt)
-            send_telegram(token, chat_id, get_device_clients(dev))
-            return
-
-        if st_act == "wait_reboot":
-            USER_STATES.pop(chat_id, None)
-            dev = find_device(txt)
-            if not dev:
-                send_telegram(token, chat_id, f"❌ Modem `{txt}` tidak ditemukan.")
-                return
-            ok, msg = reboot_device_task(dev)
-            send_telegram(token, chat_id, f"{'✅' if ok else '❌'} {msg}")
-            return
-
-        if st_act == "wait_ssid" and target:
-            USER_STATES.pop(chat_id, None)
-            dev = find_device(target)
-            new_ssid = txt.replace(f"/ssid {target}", "").strip()
-            ok, msg = set_wifi_credentials(dev, new_ssid=new_ssid)
-            if ok:
-                send_telegram(token, chat_id, (
-                    f"✅ *Nama WiFi Berhasil Diubah!*\n"
-                    f"• *Pelanggan*: `{target}`\n"
-                    f"• *SSID Baru*: `{new_ssid}`\n"
-                    f"• *Status*: Terkirim ke modem via TR-069."
-                ))
-            else:
-                send_telegram(token, chat_id, f"❌ Gagal: {msg}")
-            return
-
-        if st_act == "wait_pass" and target:
-            USER_STATES.pop(chat_id, None)
-            dev = find_device(target)
-            new_pass = txt.replace(f"/pass {target}", "").strip()
-            ok, msg = set_wifi_credentials(dev, new_password=new_pass)
-            if ok:
-                send_telegram(token, chat_id, (
-                    f"✅ *Sandi WiFi Berhasil Diubah!*\n"
-                    f"• *Pelanggan*: `{target}`\n"
-                    f"• *Sandi Baru*: `{new_pass}`\n"
-                    f"• *Status*: Terkirim ke modem via TR-069."
-                ))
-            else:
-                send_telegram(token, chat_id, f"❌ Gagal: {msg}")
-            return
-
-        if st_act == "wait_wan" and target:
-            USER_STATES.pop(chat_id, None)
-            parts = txt.split()
-            if len(parts) >= 2:
-                u = parts[0]
-                p = parts[1]
-                vlan = parts[2] if len(parts) >= 3 else None
-                dev = find_device(target)
-                ok, msg = add_or_set_wan_pppoe(dev, u, p, vlan)
-                send_telegram(token, chat_id, msg)
-            else:
-                send_telegram(token, chat_id, "⚠️ Format salah. Minimal masukkan: `<username> <password>`")
-            return
-
-    # 3. Direct Command Fast-Path
-    if txt.startswith("/addwan "):
-        parts = txt[8:].strip().split()
-        if len(parts) >= 3:
-            target = parts[0]
-            pppoe_user = parts[1]
-            pppoe_pass = parts[2]
-            vlan_id = parts[3] if len(parts) >= 4 else None
-            
-            dev = find_device(target)
-            if not dev:
-                send_telegram(token, chat_id, f"❌ Modem `{target}` tidak ditemukan. Pastikan SN atau Username benar.")
-                return
-            ok, msg = add_or_set_wan_pppoe(dev, pppoe_user, pppoe_pass, vlan_id)
-            send_telegram(token, chat_id, msg)
-            return
-        else:
-            send_telegram(token, chat_id, (
-                "⚠️ Format salah. Gunakan:\n"
-                "`/addwan <SN_atau_User> <User_PPPoE> <Pass_PPPoE> [VLAN_ID]`\n\n"
-                "_Contoh:_\n`/addwan CIOT157197A8 budi01 12345678 100`"
-            ))
-            return
-
-    if txt.startswith("/cek "):
-        target = txt[5:].strip()
-        dev = find_device(target)
-        pppoe, summary, wifi_on = get_device_summary(dev)
-        kb = get_device_inline_keyboard(pppoe, dev.get("_id") if dev else None, wifi_on) if dev else None
-        send_telegram(token, chat_id, summary, reply_markup=kb)
-        return
-
-    if txt.startswith("/klien ") or txt.startswith("/hosts "):
-        target = txt.split(maxsplit=1)[1].strip()
-        dev = find_device(target)
-        send_telegram(token, chat_id, get_device_clients(dev))
-        return
-
-    if txt.startswith("/wifioff "):
-        target = txt[9:].strip()
-        dev = find_device(target)
+    # Check conversation state jika user mengklik tombol Cek Modem
+    if state and state.get("action") == "wait_cek":
+        USER_STATES.pop(chat_id, None)
+        dev = find_device(txt)
         if not dev:
-            send_telegram(token, chat_id, f"❌ Modem `{target}` tidak ditemukan.")
+            send_telegram(token, chat_id, f"❌ Modem `{txt}` tidak ditemukan di database GenieACS.", reply_markup=get_main_menu_keyboard())
             return
-        ok, msg = set_wifi_power(dev, enable=False)
-        send_telegram(token, chat_id, f"{'✅' if ok else '❌'} {msg}")
+        summary_text, pppoe_user, dev_id, wifi_on = get_device_summary(dev)
+        send_telegram(token, chat_id, summary_text, reply_markup=get_device_inline_keyboard(pppoe_user, dev_id, wifi_on))
         return
 
-    if txt.startswith("/wifion "):
-        target = txt[8:].strip()
-        dev = find_device(target)
-        if not dev:
-            send_telegram(token, chat_id, f"❌ Modem `{target}` tidak ditemukan.")
-            return
-        ok, msg = set_wifi_power(dev, enable=True)
-        send_telegram(token, chat_id, f"{'✅' if ok else '❌'} {msg}")
-        return
+    # Jalankan perintah melalui unified command processor
+    reply_text, markup = process_agent_command(
+        user_text=txt,
+        sender_id=chat_id,
+        is_admin=True,
+        gemini_key=gemini_key,
+        gemini_model=model_name
+    )
+    send_telegram(token, chat_id, reply_text, reply_markup=markup or get_main_menu_keyboard())
 
-    if txt.startswith("/ping "):
-        parts = txt[6:].strip().split()
-        if parts:
-            target = parts[0].strip()
-            host = parts[1].strip() if len(parts) > 1 else "8.8.8.8"
-            dev = find_device(target)
-            if not dev:
-                send_telegram(token, chat_id, f"❌ Modem `{target}` tidak ditemukan.")
-                return
-            ok, msg = ping_diagnostics_task(dev, host)
-            send_telegram(token, chat_id, f"{'✅' if ok else '❌'} {msg}")
-            return
-        else:
-            send_telegram(token, chat_id, "⚠️ Format salah. Gunakan: `/ping <username/sn> [host]`\n_Contoh:_ `/ping cucimotor 8.8.8.8`")
-            return
-
-    if txt.startswith("/superadmin "):
-        parts = txt[12:].strip().split(maxsplit=1)
-        if len(parts) >= 2:
-            target, new_pass = parts[0].strip(), parts[1].strip()
-            dev = find_device(target)
-            if not dev:
-                send_telegram(token, chat_id, f"❌ Modem `{target}` tidak ditemukan.")
-                return
-            ok, msg = set_superadmin_password(dev, new_pass)
-            send_telegram(token, chat_id, f"{'✅' if ok else '❌'} {msg}")
-            return
-        else:
-            send_telegram(token, chat_id, "⚠️ Format salah. Gunakan:\n`/superadmin <username/sn> <password_baru>`")
-            return
-
-    if txt.startswith("/factoryreset "):
-        target = txt[14:].strip()
-        dev = find_device(target)
-        if not dev:
-            send_telegram(token, chat_id, f"❌ Modem `{target}` tidak ditemukan.")
-            return
-        confirm_kb = {
-            "inline_keyboard": [
-                [
-                    {"text": "⚠️ Ya, Reset Pabrik", "callback_data": f"do_fr:{target}"},
-                    {"text": "❌ Batal", "callback_data": "cancel_fr"}
-                ]
-            ]
-        }
-        send_telegram(token, chat_id, (
-            f"⚠️ *KONFIRMASI FACTORY RESET*\n"
-            f"Apakah Anda yakin ingin mereset modem pelanggan `{target}` ke setelan pabrik?\n"
-            f"_Seluruh konfigurasi WAN, WiFi, dan sandi akan kembali ke standar bawaan pabrik._"
-        ), reply_markup=confirm_kb)
-        return
-
-    if txt.startswith("/ssid "):
-        parts = txt[6:].strip().split(maxsplit=1)
-        if len(parts) >= 2:
-            target, new_ssid = parts[0].strip(), parts[1].strip()
-            dev = find_device(target)
-            if not dev:
-                send_telegram(token, chat_id, f"❌ Modem pelanggan `{target}` tidak ditemukan.")
-                return
-            ok, msg = set_wifi_credentials(dev, new_ssid=new_ssid)
-            if ok:
-                send_telegram(token, chat_id, (
-                    f"✅ *Berhasil Mengubah Nama WiFi (SSID)!*\n"
-                    f"• *Pelanggan*: `{target}`\n"
-                    f"• *Nama WiFi Baru*: `{new_ssid}`\n"
-                    f"• *Status*: Terkirim ke modem via TR-069."
-                ))
-            else:
-                send_telegram(token, chat_id, f"❌ Gagal: {msg}")
-            return
-        else:
-            send_telegram(token, chat_id, "⚠️ Format salah. Gunakan:\n`/ssid <username_pppoe> <nama_wifi_baru>`\n_Contoh:_ `/ssid cucimotor Cuci Motor Baru`")
-            return
-
-    if txt.startswith("/pass "):
-        parts = txt[6:].strip().split(maxsplit=1)
-        if len(parts) >= 2:
-            target, new_pass = parts[0].strip(), parts[1].strip()
-            dev = find_device(target)
-            if not dev:
-                send_telegram(token, chat_id, f"❌ Modem pelanggan `{target}` tidak ditemukan.")
-                return
-            ok, msg = set_wifi_credentials(dev, new_password=new_pass)
-            if ok:
-                send_telegram(token, chat_id, (
-                    f"✅ *Berhasil Mengubah Sandi WiFi!*\n"
-                    f"• *Pelanggan*: `{target}`\n"
-                    f"• *Sandi Baru*: `{new_pass}`\n"
-                    f"• *Status*: Terkirim ke modem via TR-069."
-                ))
-            else:
-                send_telegram(token, chat_id, f"❌ Gagal: {msg}")
-            return
-        else:
-            send_telegram(token, chat_id, "⚠️ Format salah. Gunakan:\n`/pass <username_pppoe> <sandi_baru>`\n_Contoh:_ `/pass cucimotor 12345678`")
-            return
-
-    if txt.startswith("/reboot "):
-        target = txt[8:].strip()
-        dev = find_device(target)
-        if not dev:
-            send_telegram(token, chat_id, f"❌ Modem `{target}` tidak ditemukan.")
-            return
-        ok, msg = reboot_device_task(dev)
-        send_telegram(token, chat_id, f"{'✅' if ok else '❌'} {msg}")
-        return
-
-    if txt.startswith("/wifi "):
-        parts = txt[6:].strip().split()
-        if len(parts) >= 3:
-            target, new_ssid, new_pass = parts[0], parts[1], parts[2]
-            dev = find_device(target)
-            if not dev:
-                send_telegram(token, chat_id, f"❌ Modem `{target}` tidak ditemukan.")
-                return
-            ok, msg = set_wifi_credentials(dev, new_ssid=new_ssid, new_password=new_pass)
-            if ok:
-                send_telegram(token, chat_id, (
-                    f"✅ *Berhasil Mengubah WiFi & Sandi!*\n"
-                    f"• *Pelanggan*: `{target}`\n"
-                    f"• *SSID Baru*: `{new_ssid}`\n"
-                    f"• *Sandi Baru*: `{new_pass}`\n"
-                    f"• *Status*: Terkirim ke modem via TR-069."
-                ))
-            else:
-                send_telegram(token, chat_id, f"❌ Gagal: {msg}")
-            return
-        else:
-            send_telegram(token, chat_id, "⚠️ Format salah. Gunakan:\n`/wifi <username> <ssid> <password>`")
-            return
-
-    # Direct search fallback (bila pengguna langsung ketik nama pppoe atau SN)
-    dev = find_device(txt)
-    if dev:
-        pppoe, summary, wifi_on = get_device_summary(dev)
-        kb = get_device_inline_keyboard(pppoe, dev.get("_id") if dev else None, wifi_on) if dev else None
-        send_telegram(token, chat_id, summary, reply_markup=kb)
-        return
-
-    # Gemini AI Fallback jika pengguna bertanya bahasa santai
-    ai_reply = ask_gemini_ai(gemini_key, model_name, txt, chat_id)
-    if ai_reply:
-        send_telegram(token, chat_id, f"🤖 *{BRAND_NAME} AI:*\n\n{ai_reply}")
-        return
-
-    send_telegram(token, chat_id, "🤖 Perintah tidak dikenal. Klik tombol menu di bawah atau ketik `/menu`.", reply_markup=get_main_menu_keyboard())
-
-# ==============================================================================
-# BACKGROUND WATCHDOG (AUTO-ALERTS)
-# ==============================================================================
 
 def check_proactive_alerts(token, admin_ids):
-    global SEEN_DEVICES, NOTIFIED_DROPS
-    db = get_db()
-    if db is None or not admin_ids:
-        return
-        
-    now = time.time()
     try:
-        # 1. Deteksi ONT Baru Belum Setting
-        all_devs = list(db.devices.find({}, {"_id": 1, "_deviceId": 1, "VirtualParameters.pppoeUsername": 1, "_lastInform": 1}))
-        current_ids = {d["_id"] for d in all_devs}
-        
-        # Inisialisasi awal agar tidak spam saat pertama kali bot start
-        if not SEEN_DEVICES:
-            SEEN_DEVICES = current_ids
+        db = get_db()
+        if db is None:
             return
             
-        new_ids = current_ids - SEEN_DEVICES
-        for nid in new_ids:
-            if "DISCOVERYSERVICE" in nid.upper():
-                continue
-            dev = db.devices.find_one({"_id": nid})
-            if not dev: continue
-            
-            vp = dev.get("VirtualParameters", {})
-            pppoe = vp.get("pppoeUsername", {}).get("_value")
-            
-            # Jika belum ada PPPoE, kirim notifikasi ONT baru
-            if not pppoe or pppoe in ["0", "undefined", ""]:
-                did = dev.get("_deviceId", {})
-                sn = did.get("_SerialNumber") or nid
-                mfr = did.get("_Manufacturer", "-")
-                model = did.get("_ProductClass", "-")
-                
-                alert_msg = (
-                    f"⚠️ *[NOTIFIKASI OTOMATIS] ONT BARU TERHUBUNG!*\n"
-                    f"━━━━━━━━━━━━━━━━━━━━\n"
-                    f"• *Serial Number*: `{sn}`\n"
-                    f"• *Tipe Hardware*: {mfr} {model}\n"
-                    f"• *Status*: Belum ada akun PPPoE terpasang.\n"
-                    f"━━━━━━━━━━━━━━━━━━━━\n"
-                    f"👉 *Format Pasang*: `/addwan {sn} <user_pppoe> <pass_pppoe>`"
-                )
-                for aid in admin_ids:
-                    send_telegram(token, aid, alert_msg)
-                    
-        SEEN_DEVICES = current_ids
-        
-        # 2. Deteksi Redaman Anjlok Kritis (< -28.0 dBm)
-        for d in db.devices.find({"VirtualParameters.RXPower": {"$exists": True}}):
-            dev_id = d.get("_id")
+        cursor = db.devices.find({"VirtualParameters.RXPower": {"$exists": True}})
+        for d in cursor:
             vp = d.get("VirtualParameters", {})
-            rx_raw = vp.get("RXPower", {}).get("_value")
+            rx_dict = vp.get("RXPower", {})
+            rx_val = rx_dict.get("_value") if isinstance(rx_dict, dict) else None
+            
+            if rx_val is None:
+                continue
+                
             try:
-                rx_val = float(str(rx_raw).replace("dBm", "").strip())
-                if rx_val < -28.0:
-                    last_notif = NOTIFIED_DROPS.get(dev_id, 0)
-                    if (now - last_notif) > 10800: # 3 jam cooldown per device
-                        pppoe = vp.get("pppoeUsername", {}).get("_value") or dev_id
-                        NOTIFIED_DROPS[dev_id] = now
+                rx_float = float(rx_val)
+                dev_id = d.get("_id", "Unknown")
+                pppoe = vp.get("pppoeUsername", {}).get("_value") if isinstance(vp.get("pppoeUsername"), dict) else dev_id
+                
+                if rx_float < -27.0 or rx_float > -8.0:
+                    alert_key = f"{dev_id}_bad_rx"
+                    last_alert = ALERT_HISTORY.get(alert_key, 0)
+                    now = time.time()
+                    
+                    if (now - last_alert) > 3600:
+                        ALERT_HISTORY[alert_key] = now
                         drop_msg = (
                             f"🚨 *[ALERT REDAMAN DROP KRITIS]*\n"
                             f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -1337,118 +1235,202 @@ def check_proactive_alerts(token, admin_ids):
                         )
                         for aid in admin_ids:
                             send_telegram(token, aid, drop_msg)
+
+                        # Kirim notifikasi ke WhatsApp Admin jika aktif
+                        try:
+                            cfgs = get_config()
+                            wa_enabled = cfgs.get("agent.whatsapp.enabled", "true").lower() == "true"
+                            wa_admins = cfgs.get("agent.whatsapp.admin_numbers", BRAND_PHONE)
+                            if wa_enabled and wa_admins:
+                                wa_list = [w.strip() for w in wa_admins.replace(";", ",").split(",") if w.strip()]
+                                for wa_no in wa_list:
+                                    requests.post("http://127.0.0.1:7559/send", json={"to": wa_no, "text": drop_msg}, timeout=2.0)
+                        except Exception:
+                            pass
             except Exception:
                 pass
                 
     except Exception as e:
         logger.error(f"Error in watchdog: {e}")
 
-# ==============================================================================
-# MAIN AGENT SERVICE LOOP
-# ==============================================================================
-
-
-# ==============================================================================
-# WEB CONFIG UI (PORT 7558) - PENGATURAN BOT DARI WEB BROWSER
-# ==============================================================================
 
 HTML_CONFIG_PAGE = """<!DOCTYPE html>
 <html lang="id">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pengaturan Bot Telegram & AI - ALIJAYA NET</title>
+  <title>Pengaturan Bot AI & WhatsApp - ALIJAYA NET</title>
   <style>
     :root {
-      --bg: #0f172a;
+      --bg: #0b1120;
       --card: #1e293b;
+      --card-inner: #0f172a;
       --border: #334155;
       --primary: #06b6d4;
       --primary-hover: #0891b2;
       --success: #10b981;
       --danger: #ef4444;
+      --warning: #f59e0b;
       --text: #f8fafc;
       --text-muted: #94a3b8;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    body { background-color: var(--bg); color: var(--text); padding: 24px; display: flex; justify-content: center; }
-    .container { width: 100%; max-width: 650px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 28px; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
-    .header { text-align: center; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 16px; }
-    .header h2 { font-size: 1.5rem; color: var(--primary); display: flex; align-items: center; justify-content: center; gap: 8px; }
-    .header p { color: var(--text-muted); font-size: 0.88rem; margin-top: 4px; }
-    .form-group { margin-bottom: 18px; }
+    body { background-color: var(--bg); color: var(--text); padding: 20px; display: flex; justify-content: center; }
+    .container { width: 100%; max-width: 680px; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+    .header { text-align: center; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 16px; }
+    .header h2 { font-size: 1.45rem; color: var(--primary); display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .header p { color: var(--text-muted); font-size: 0.85rem; margin-top: 4px; }
+    
+    /* Tabs Navigation */
+    .tabs { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+    .tab-btn { flex: 1; padding: 10px 12px; background: transparent; border: 1px solid transparent; border-radius: 8px; color: var(--text-muted); font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px; }
+    .tab-btn:hover { background: rgba(255,255,255,0.05); color: #fff; }
+    .tab-btn.active { background: #0284c7; color: #fff; border-color: #38bdf8; }
+    
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; animation: fadeIn 0.2s ease-in-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+    .form-group { margin-bottom: 16px; }
     label { display: block; font-size: 0.88rem; font-weight: 600; margin-bottom: 6px; color: var(--text); }
     .hint { font-size: 0.78rem; color: var(--text-muted); margin-top: 4px; line-height: 1.4; }
-    input[type="text"], input[type="password"], select {
-      width: 100%; padding: 10px 14px; background: #0f172a; border: 1px solid var(--border); border-radius: 8px; color: #fff; font-size: 0.95rem; outline: none; transition: border 0.2s;
+    input[type="text"], input[type="password"], select, textarea {
+      width: 100%; padding: 10px 14px; background: var(--card-inner); border: 1px solid var(--border); border-radius: 8px; color: #fff; font-size: 0.92rem; outline: none; transition: border 0.2s;
     }
-    input:focus, select:focus { border-color: var(--primary); }
-    .btn-row { display: flex; gap: 12px; margin-top: 24px; }
-    button {
-      flex: 1; padding: 12px 18px; border: none; border-radius: 8px; font-weight: 600; font-size: 0.95rem; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px;
-    }
+    input:focus, select:focus, textarea:focus { border-color: var(--primary); }
+    textarea { resize: vertical; min-height: 60px; }
+
+    /* WhatsApp Status Card */
+    .status-card { background: var(--card-inner); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-bottom: 18px; text-align: center; }
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 0.82rem; font-weight: 600; text-transform: uppercase; margin-bottom: 10px; }
+    .badge-open { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid var(--success); }
+    .badge-qr { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid var(--warning); }
+    .badge-connecting { background: rgba(6, 182, 212, 0.2); color: #22d3ee; border: 1px solid var(--primary); }
+    .badge-disconnected { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid var(--danger); }
+
+    .qr-box { margin-top: 12px; }
+    .qr-box img { width: 230px; height: 230px; background: #fff; padding: 8px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.6); }
+
+    .btn-row { display: flex; gap: 12px; margin-top: 22px; }
+    button { flex: 1; padding: 11px 16px; border: none; border-radius: 8px; font-weight: 600; font-size: 0.92rem; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
     .btn-save { background: var(--primary); color: #000; }
     .btn-save:hover { background: var(--primary-hover); }
     .btn-test { background: #334155; color: #fff; }
     .btn-test:hover { background: #475569; }
-    .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 18px; font-size: 0.9rem; display: none; }
+    .btn-logout { background: #7f1d1d; color: #fca5a5; border: 1px solid #ef4444; padding: 6px 14px; font-size: 0.85rem; border-radius: 6px; margin-top: 10px; display: inline-flex; }
+    .btn-logout:hover { background: #991b1b; color: #fff; }
+
+    .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 0.9rem; display: none; }
     .alert-success { background: rgba(16, 185, 129, 0.2); border: 1px solid var(--success); color: #34d399; }
     .alert-error { background: rgba(239, 68, 68, 0.2); border: 1px solid var(--danger); color: #f87171; }
-    .back-link { display: inline-block; margin-top: 20px; text-decoration: none; color: var(--primary); font-size: 0.88rem; font-weight: 500; }
+    .back-link { display: inline-block; margin-top: 18px; text-decoration: none; color: var(--primary); font-size: 0.85rem; font-weight: 500; }
     .back-link:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <h2>🤖 Pengaturan Bot Telegram & AI</h2>
-      <p>Kelola konfigurasi Bot TR-069 GenieACS langsung dari Web Browser</p>
+      <h2>🤖 Pengaturan Bot AI (Telegram & WhatsApp)</h2>
+      <p>Panel Kontrol TR-069 GenieACS, Bot Telegram & Gateway WhatsApp Baileys</p>
     </div>
 
     <div id="alertBox" class="alert"></div>
 
+    <div class="tabs">
+      <button type="button" class="tab-btn active" onclick="switchTab('tab-wa')">📱 WhatsApp (Baileys)</button>
+      <button type="button" class="tab-btn" onclick="switchTab('tab-tg')">✈️ Telegram Bot</button>
+      <button type="button" class="tab-btn" onclick="switchTab('tab-brand')">🏢 Brand & AI</button>
+    </div>
+
     <form id="botForm">
-      <div class="form-group">
-        <label>Status Layanan Bot:</label>
-        <select id="bot_enabled" name="enabled">
-          <option value="true">Aktif (Enabled) 🟢</option>
-          <option value="false">Nonaktif (Disabled) 🔴</option>
-        </select>
+      <!-- TAB 1: WHATSAPP (BAILEYS) -->
+      <div id="tab-wa" class="tab-pane active">
+        <div class="status-card">
+          <span id="waBadge" class="badge badge-connecting">MEMUAT STATUS...</span>
+          
+          <div id="waConnectedBox" style="display: none;">
+            <p style="color: #34d399; font-weight: 600; font-size: 1.05rem;">✅ Bot WhatsApp Siap Digunakan</p>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 4px;">Akun: <b id="waUser" style="color: #fff;">-</b></p>
+            <button type="button" class="btn-logout" onclick="logoutWA()">🔴 Putus Koneksi / Logout</button>
+          </div>
+
+          <div id="waQrBox" class="qr-box" style="display: none;">
+            <p style="font-size: 0.88rem; color: #fbbf24; font-weight: 600; margin-bottom: 6px;">📷 Pindai Kode QR WhatsApp</p>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">Buka WhatsApp di HP ➔ <b>Perangkat Tertaut</b> ➔ <b>Tautkan Perangkat</b></p>
+            <img id="waQrImg" src="" alt="WhatsApp QR Code" />
+            <p style="font-size: 0.75rem; color: var(--primary); margin-top: 8px;">Auto-refresh aktif setiap 3 detik 🔄</p>
+          </div>
+
+          <div id="waOfflineBox" style="display: none;">
+            <p style="color: #f87171; font-size: 0.88rem;">⚠️ Service WhatsApp belum aktif di port 7559.<br>Pastikan daemon <code>genieacs-whatsapp.service</code> sedang berjalan.</p>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Status Layanan Bot WhatsApp:</label>
+          <select id="wa_enabled" name="wa_enabled">
+            <option value="true">Aktif (Enabled) 🟢</option>
+            <option value="false">Nonaktif (Disabled) 🔴</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Nomor WhatsApp Admin / Teknisi:</label>
+          <textarea id="wa_admin_numbers" name="wa_admin_numbers" placeholder="Contoh: 081947215703, 081234567890"></textarea>
+          <div class="hint">Nomor yang memiliki hak akses perintah administratif (cek, redaman, reboot, wifion/off, ssid, dll). Pisahkan koma jika lebih dari satu.</div>
+        </div>
       </div>
 
-      <div class="form-group">
-        <label>Token Bot Telegram:</label>
-        <input type="text" id="bot_token" name="token" placeholder="Contoh: 123456789:AAFMD7X_xxxxxxxxxxxxxx" required>
-        <div class="hint">Dapatkan dari @BotFather di Telegram. Tempel langsung tanpa tanda petik.</div>
+      <!-- TAB 2: TELEGRAM BOT -->
+      <div id="tab-tg" class="tab-pane">
+        <div class="form-group">
+          <label>Status Layanan Bot Telegram:</label>
+          <select id="bot_enabled" name="enabled">
+            <option value="true">Aktif (Enabled) 🟢</option>
+            <option value="false">Nonaktif (Disabled) 🔴</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Token Bot Telegram:</label>
+          <input type="text" id="bot_token" name="token" placeholder="Contoh: 123456789:AAFMD7X_xxxxxxxxxxxxxx">
+          <div class="hint">Dapatkan dari @BotFather di Telegram.</div>
+        </div>
+
+        <div class="form-group">
+          <label>Admin Chat ID / ID Grup Telegram:</label>
+          <input type="text" id="admin_id" name="admin_id" placeholder="Contoh: 567858628 atau 567858628, -100987654321">
+          <div class="hint">Dapatkan ID Anda dari @userinfobot. Bisa isi beberapa ID dipisah koma.</div>
+        </div>
+
+        <div style="margin-top: 14px;">
+          <button type="button" id="btnTest" class="btn-test">🧪 Tes Kirim Pesan Telegram</button>
+        </div>
       </div>
 
-      <div class="form-group">
-        <label>Admin Chat ID / ID Grup Telegram:</label>
-        <input type="text" id="admin_id" name="admin_id" placeholder="Contoh: 567858628 atau 567858628, -100987654321" required>
-        <div class="hint">Dapatkan ID Anda dari @userinfobot. Bisa isi beberapa ID dipisah koma (untuk grup & teknisi).</div>
-      </div>
+      <!-- TAB 3: BRANDING & AI -->
+      <div id="tab-brand" class="tab-pane">
+        <div class="form-group">
+          <label>Nama Brand / ISP / RT-RW Net:</label>
+          <input type="text" id="brand_name" name="brand_name" placeholder="ALIJAYA NET">
+          <div class="hint">Nama usaha yang akan tampil pada header pesan Telegram & WhatsApp.</div>
+        </div>
 
-      <div class="form-group">
-        <label>Nama Brand / ISP / RT-RW Net:</label>
-        <input type="text" id="brand_name" name="brand_name" placeholder="ALIJAYA NET">
-        <div class="hint">Nama usaha yang akan tampil di pesan dan salam bot.</div>
-      </div>
+        <div class="form-group">
+          <label>Nomor Telepon / WhatsApp Customer Service:</label>
+          <input type="text" id="brand_phone" name="brand_phone" placeholder="081947215703">
+          <div class="hint">Nomor kontak layanan bantuan pada footer pesan.</div>
+        </div>
 
-      <div class="form-group">
-        <label>Nomor Telepon / WhatsApp CS:</label>
-        <input type="text" id="brand_phone" name="brand_phone" placeholder="081947215703">
-        <div class="hint">Nomor kontak layanan bantuan yang tampil pada bot.</div>
-      </div>
-
-      <div class="form-group">
-        <label>Google Gemini API Key (Opsional):</label>
-        <input type="password" id="gemini_key" name="gemini_key" placeholder="AIzaSyDxxxxxxxxxxxxxxxxxxxx">
-        <div class="hint">Untuk asisten AI cerdas tanya-jawab bahasa santai. Kosongkan jika tidak memakai.</div>
+        <div class="form-group">
+          <label>Google Gemini API Key (Opsional):</label>
+          <input type="password" id="gemini_key" name="gemini_key" placeholder="AIzaSyDxxxxxxxxxxxxxxxxxxxx">
+          <div class="hint">Untuk asisten AI percakapan cerdas. Kosongkan jika tidak memakai.</div>
+        </div>
       </div>
 
       <div class="btn-row">
-        <button type="submit" class="btn-save">💾 Simpan Pengaturan</button>
-        <button type="button" id="btnTest" class="btn-test">🧪 Tes Kirim Telegram</button>
+        <button type="submit" class="btn-save">💾 Simpan Semua Pengaturan</button>
       </div>
     </form>
 
@@ -1460,6 +1442,13 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
   <script>
     document.getElementById('backToAcs').href = window.location.protocol + '//' + window.location.hostname + ':3000';
 
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+      document.getElementById(tabId).classList.add('active');
+      event.currentTarget.classList.add('active');
+    }
+
     function showAlert(msg, isSuccess) {
       const box = document.getElementById('alertBox');
       box.textContent = msg;
@@ -1468,7 +1457,7 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
       box.scrollIntoView({ behavior: 'smooth' });
     }
 
-    // Load initial data
+    // Load initial config
     fetch('/api/config')
       .then(r => r.json())
       .then(data => {
@@ -1478,18 +1467,91 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
         document.getElementById('brand_name').value = data.brand_name || 'ALIJAYA NET';
         document.getElementById('brand_phone').value = data.brand_phone || '081947215703';
         document.getElementById('gemini_key').value = data.gemini_key || '';
+        document.getElementById('wa_enabled').value = data.wa_enabled || 'true';
+        document.getElementById('wa_admin_numbers').value = data.wa_admin_numbers || data.brand_phone || '081947215703';
       })
-      .catch(e => showAlert('Gagal memuat konfigurasi: ' + e, false));
+      .catch(e => console.error(e));
 
+    // WhatsApp Live Status Polling
+    function pollWhatsAppStatus() {
+      fetch('/api/whatsapp/status')
+        .then(r => r.json())
+        .then(st => {
+          const badge = document.getElementById('waBadge');
+          const connBox = document.getElementById('waConnectedBox');
+          const qrBox = document.getElementById('waQrBox');
+          const offBox = document.getElementById('waOfflineBox');
+          const qrImg = document.getElementById('waQrImg');
+          const waUser = document.getElementById('waUser');
+
+          if (!st || st.connection === 'disconnected' || st.error) {
+            badge.className = 'badge badge-disconnected';
+            badge.textContent = 'TERPUTUS / OFFLINE';
+            connBox.style.display = 'none';
+            qrBox.style.display = 'none';
+            offBox.style.display = 'block';
+          } else if (st.connection === 'open') {
+            badge.className = 'badge badge-open';
+            badge.textContent = 'TERHUBUNG (CONNECTED) 🟢';
+            const userStr = st.user ? (st.user.id || st.user.name || 'Bot Terhubung') : 'Aktif';
+            waUser.textContent = userStr.replace(':1@s.whatsapp.net', '').replace('@s.whatsapp.net', '');
+            connBox.style.display = 'block';
+            qrBox.style.display = 'none';
+            offBox.style.display = 'none';
+          } else if (st.connection === 'qr' && st.qrImage) {
+            badge.className = 'badge badge-qr';
+            badge.textContent = 'MENUNGGU PINDAI QR 🟡';
+            qrImg.src = st.qrImage;
+            qrBox.style.display = 'block';
+            connBox.style.display = 'none';
+            offBox.style.display = 'none';
+          } else if (st.connection === 'connecting') {
+            badge.className = 'badge badge-connecting';
+            badge.textContent = 'MENGHUBUNGKAN... ⏳';
+            connBox.style.display = 'none';
+            qrBox.style.display = 'none';
+            offBox.style.display = 'none';
+          } else {
+            badge.className = 'badge badge-disconnected';
+            badge.textContent = (st.connection || 'LOGGED OUT').toUpperCase();
+            connBox.style.display = 'none';
+            qrBox.style.display = 'none';
+            offBox.style.display = 'none';
+          }
+        })
+        .catch(() => {
+          const badge = document.getElementById('waBadge');
+          badge.className = 'badge badge-disconnected';
+          badge.textContent = 'OFFLINE';
+        });
+    }
+
+    pollWhatsAppStatus();
+    setInterval(pollWhatsAppStatus, 3000);
+
+    function logoutWA() {
+      if (!confirm('Yakin ingin memutuskan koneksi sesi WhatsApp ini?')) return;
+      fetch('/api/whatsapp/logout', { method: 'POST' })
+        .then(r => r.json())
+        .then(res => {
+          showAlert('Sesi WhatsApp berhasil diputus. Silakan tunggu QR Code baru muncul.', true);
+          pollWhatsAppStatus();
+        })
+        .catch(err => showAlert('Gagal logout: ' + err.message, false));
+    }
+
+    // Save Form Handler
     document.getElementById('botForm').addEventListener('submit', function(e) {
       e.preventDefault();
       const payload = {
         enabled: document.getElementById('bot_enabled').value,
-        token: document.getElementById('bot_token').value.trim(),
-        admin_id: document.getElementById('admin_id').value.trim(),
-        brand_name: document.getElementById('brand_name').value.trim(),
-        brand_phone: document.getElementById('brand_phone').value.trim(),
-        gemini_key: document.getElementById('gemini_key').value.trim()
+        token: document.getElementById('bot_token').value,
+        admin_id: document.getElementById('admin_id').value,
+        brand_name: document.getElementById('brand_name').value,
+        brand_phone: document.getElementById('brand_phone').value,
+        gemini_key: document.getElementById('gemini_key').value,
+        wa_enabled: document.getElementById('wa_enabled').value,
+        wa_admin_numbers: document.getElementById('wa_admin_numbers').value
       };
 
       fetch('/api/config', {
@@ -1500,38 +1562,49 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
       .then(r => r.json())
       .then(res => {
         if (res.success) {
-          showAlert('✅ Konfigurasi bot berhasil disimpan dan langsung aktif!', true);
+          showAlert('✅ Konfigurasi bot berhasil disimpan dan langsung diterapkan!', true);
         } else {
-          showAlert('❌ Gagal: ' + (res.message || 'Terjadi kesalahan'), false);
+          showAlert('❌ Gagal menyimpan: ' + (res.message || 'Error MongoDB'), false);
         }
       })
-      .catch(e => showAlert('Error koneksi: ' + e, false));
+      .catch(err => showAlert('❌ Gagal menghubungi server: ' + err.message, false));
     });
 
+    // Test Telegram Handler
     document.getElementById('btnTest').addEventListener('click', function() {
-      showAlert('Mengirim pesan tes ke Telegram...', true);
+      const token = document.getElementById('bot_token').value;
+      const admin_id = document.getElementById('admin_id').value;
+      if (!token || !admin_id) {
+        showAlert('Token Telegram dan Admin Chat ID harus diisi untuk pengujian!', false);
+        return;
+      }
+      this.textContent = '⏳ Mengirim...';
+      this.disabled = true;
+
       fetch('/api/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: document.getElementById('bot_token').value.trim(),
-          admin_id: document.getElementById('admin_id').value.trim()
-        })
+        body: JSON.stringify({ token: token, admin_id: admin_id })
       })
       .then(r => r.json())
       .then(res => {
         if (res.success) {
-          showAlert('🎉 Berhasil! Pesan tes telah terkirim ke Telegram Anda.', true);
+          showAlert('✅ Notifikasi tes berhasil terkirim ke Telegram Anda!', true);
         } else {
-          showAlert('❌ Gagal kirim tes: ' + (res.message || 'Periksa Token & Chat ID Anda'), false);
+          showAlert('❌ Gagal mengirim tes: ' + (res.message || 'Periksa token & chat ID'), false);
         }
       })
-      .catch(e => showAlert('Error saat tes kirim: ' + e, false));
+      .catch(err => showAlert('❌ Error: ' + err.message, false))
+      .finally(() => {
+        this.textContent = '🧪 Tes Kirim Pesan Telegram';
+        this.disabled = false;
+      });
     });
   </script>
 </body>
 </html>
 """
+
 
 class BotConfigHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -1548,12 +1621,23 @@ class BotConfigHandler(BaseHTTPRequestHandler):
                 "admin_id": cfgs.get("agent.telegram.adminChatId", ""),
                 "brand_name": cfgs.get("agent.brand.name", BRAND_NAME),
                 "brand_phone": cfgs.get("agent.brand.phone", BRAND_PHONE),
-                "gemini_key": cfgs.get("agent.gemini.apiKey", "")
+                "gemini_key": cfgs.get("agent.gemini.apiKey", ""),
+                "wa_enabled": cfgs.get("agent.whatsapp.enabled", "true"),
+                "wa_admin_numbers": cfgs.get("agent.whatsapp.admin_numbers", cfgs.get("agent.brand.phone", BRAND_PHONE))
             }
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps(data).encode("utf-8"))
+            self.send_json(data)
+        elif self.path == "/api/whatsapp/status":
+            try:
+                r = requests.get("http://127.0.0.1:7559/status", timeout=2.5)
+                self.send_json(r.json())
+            except Exception as e:
+                self.send_json({"connection": "disconnected", "error": str(e)})
+        elif self.path == "/api/whatsapp/lid_mappings":
+            try:
+                r = requests.get("http://127.0.0.1:7559/lid_mappings", timeout=2.5)
+                self.send_json(r.json())
+            except Exception as e:
+                self.send_json({"error": str(e)})
         else:
             self.send_response(404)
             self.end_headers()
@@ -1578,14 +1662,50 @@ class BotConfigHandler(BaseHTTPRequestHandler):
                 "agent.telegram.adminChatId": f'"{req.get("admin_id", "").strip()}"',
                 "agent.brand.name": f'"{req.get("brand_name", BRAND_NAME).strip()}"',
                 "agent.brand.phone": f'"{req.get("brand_phone", BRAND_PHONE).strip()}"',
-                "agent.gemini.apiKey": f'"{req.get("gemini_key", "").strip()}"'
+                "agent.gemini.apiKey": f'"{req.get("gemini_key", "").strip()}"',
+                "agent.whatsapp.enabled": f'"{req.get("wa_enabled", "true").strip()}"',
+                "agent.whatsapp.admin_numbers": f'"{req.get("wa_admin_numbers", BRAND_PHONE).strip()}"'
             }
 
             for k, v in configs_to_save.items():
                 db.config.update_one({"_id": k}, {"$set": {"value": v}}, upsert=True)
 
+            # Notifikasi reload ke service WhatsApp
+            try:
+                requests.post("http://127.0.0.1:7559/reload_admins", timeout=1.0)
+            except Exception:
+                pass
+
             logger.info("Konfigurasi bot berhasil disimpan melalui Web UI (Port 7558)!")
             self.send_json({"success": True, "message": "Konfigurasi berhasil disimpan"})
+
+        elif self.path == "/api/whatsapp/logout":
+            try:
+                r = requests.post("http://127.0.0.1:7559/logout", timeout=5.0)
+                self.send_json(r.json())
+            except Exception as e:
+                self.send_json({"success": False, "error": str(e)})
+
+        elif self.path == "/api/agent_command":
+            text = req.get("text", "")
+            sender = req.get("sender", "anonymous")
+            is_admin = bool(req.get("isAdmin", False))
+            push_name = req.get("pushName", "")
+            reg_tag = req.get("registeredTag", None)
+
+            cfgs = get_config()
+            gemini_key = cfgs.get("agent.gemini.apiKey", "")
+            gemini_model = cfgs.get("agent.gemini.model", "gemini-1.5-flash")
+
+            reply_text, _ = process_agent_command(
+                user_text=text,
+                sender_id=sender,
+                is_admin=is_admin,
+                gemini_key=gemini_key,
+                gemini_model=gemini_model,
+                registered_tag=reg_tag
+            )
+            self.send_json({"success": True, "reply": reply_text})
 
         elif self.path == "/api/test":
             token = req.get("token", "").strip()
@@ -1625,6 +1745,7 @@ class BotConfigHandler(BaseHTTPRequestHandler):
 
     def log_message(self, *args):
         pass
+
 
 def start_web_server(port=7558):
     try:

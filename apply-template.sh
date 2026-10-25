@@ -158,6 +158,18 @@ if [ -f /opt/genieacs-agent/set-bot.py ]; then
   ln -sf /opt/genieacs-agent/set-bot.py /usr/local/bin/set-bot
 fi
 
+# Pasang WhatsApp Baileys Gateway Agent
+if [ -d "${SCRIPT_DIR}/whatsapp" ]; then
+  cp -r "${SCRIPT_DIR}/whatsapp"/* /opt/genieacs-agent/
+elif [ -d "./whatsapp" ]; then
+  cp -r ./whatsapp/* /opt/genieacs-agent/
+fi
+
+if command -v npm >/dev/null 2>&1; then
+  echo -e "${BLUE}Menginstall dependensi WhatsApp Baileys di /opt/genieacs-agent...${NC}"
+  (cd /opt/genieacs-agent && npm install @whiskeysockets/baileys@7.0.0-rc11 pino@^9.6.0 qrcode@^1.5.4 qrcode-terminal@^0.12.0 --ignore-scripts --no-audit --no-fund 2>/dev/null || true)
+fi
+
 cat << 'EOF' > /etc/systemd/system/genieacs-agent.service
 [Unit]
 Description=GenieACS AI Telegram Agent (ALIJAYA NET)
@@ -175,9 +187,27 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
+cat << 'EOF' > /etc/systemd/system/genieacs-whatsapp.service
+[Unit]
+Description=GenieACS WhatsApp AI Agent (Baileys Gateway - ALIJAYA NET)
+After=network.target mongod.service genieacs-nbi.service genieacs-agent.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/genieacs-agent
+ExecStart=/usr/bin/node /opt/genieacs-agent/whatsapp-bot.mjs
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 systemctl daemon-reload
-systemctl enable genieacs-agent.service 2>/dev/null || true
-systemctl restart genieacs-agent.service 2>/dev/null || true
+systemctl enable genieacs-agent.service genieacs-whatsapp.service 2>/dev/null || true
+systemctl restart genieacs-agent.service genieacs-whatsapp.service 2>/dev/null || true
 
 # Pastikan symlink binary genieacs-* selalu ada di /usr/bin/ dan /usr/local/bin/
 for mod in "cwmp" "nbi" "fs" "ui"; do
@@ -198,18 +228,19 @@ for mod in "cwmp" "nbi" "fs" "ui"; do
 done
 
 echo -e "${BLUE}[3/3] Merestart layanan GenieACS & Agent...${NC}"
-systemctl restart genieacs-ui genieacs-cwmp genieacs-nbi genieacs-fs genieacs-agent 2>/dev/null || {
+systemctl restart genieacs-ui genieacs-cwmp genieacs-nbi genieacs-fs genieacs-agent genieacs-whatsapp 2>/dev/null || {
   service genieacs-ui restart 2>/dev/null || true
   service genieacs-cwmp restart 2>/dev/null || true
 }
 
 echo ""
 echo -e "${GREEN}══════════════════════════════════════════════════════════════════════${NC}"
-echo -e "${BOLD}${GREEN}✔ SUKSES! Tampilan, Fitur Informatif & Telegram Bot Berhasil Aktif!${NC}"
+echo -e "${BOLD}${GREEN}✔ SUKSES! Tampilan, Fitur Informatif, Telegram & WhatsApp Bot Aktif!${NC}"
 echo -e "${CYAN}• Tab Aktif    : LAN, WAN (Add WAN Button), WLAN (Multi-SSID), USER, TR069${NC}"
 echo -e "${CYAN}• Fitur Data   : Optical Power Rx/Tx, Host LAN Clients, WiFi Clients RSSI${NC}"
 echo -e "${CYAN}• Telegram Bot : AKTIF (Port 7558 / ketik 'set-bot' di terminal)${NC}"
-echo -e "${YELLOW}• Web Bot UI   : Buka menu '🤖 Bot Telegram' di GenieACS atau port 7558${NC}"
+echo -e "${CYAN}• WhatsApp Bot : AKTIF (Baileys Gateway Port 7559 / Scan QR di port 7558)${NC}"
+echo -e "${YELLOW}• Web Bot UI   : Buka menu '🤖 Bot AI & WA' di GenieACS atau port 7558${NC}"
 echo -e "${CYAN}• Status Sesi  : Provision Bebas Fault & Kompatibel Semua Merk ONT${NC}"
 echo -e "${YELLOW}Silakan buka browser dan refresh (Ctrl + F5) pada halaman GenieACS UI.${NC}"
 echo -e "${GREEN}══════════════════════════════════════════════════════════════════════${NC}"
