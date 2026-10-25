@@ -1605,71 +1605,81 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
   <title>Pengaturan Bot AI & WhatsApp - ALIJAYA NET</title>
   <style>
     :root {
-      --bg: #0b1120;
-      --card: #1e293b;
-      --card-inner: #0f172a;
-      --border: #334155;
-      --primary: #06b6d4;
-      --primary-hover: #0891b2;
+      --bg: #050833;
+      --card: #080d22;
+      --card-inner: #040714;
+      --border: #1c274c;
+      --primary: #00e5ff;
+      --primary-btn: #046380;
+      --primary-hover: #00b4d8;
       --success: #10b981;
       --danger: #ef4444;
       --warning: #f59e0b;
-      --text: #f8fafc;
+      --text: #f1f5f9;
       --text-muted: #94a3b8;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    body { background-color: var(--bg); color: var(--text); padding: 20px; display: flex; justify-content: center; }
-    .container { width: 100%; max-width: 680px; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-    .header { text-align: center; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 16px; }
-    .header h2 { font-size: 1.45rem; color: var(--primary); display: flex; align-items: center; justify-content: center; gap: 8px; }
-    .header p { color: var(--text-muted); font-size: 0.85rem; margin-top: 4px; }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif; }
+    html { min-height: 100vh; background-color: var(--bg); }
+    body { background-color: transparent; color: var(--text); padding: 14px; display: flex; justify-content: center; }
+    .container { width: 100%; max-width: 860px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 22px; box-shadow: 0 4px 25px rgba(0,0,0,0.45); }
     
+    .header { text-align: center; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 14px; position: relative; }
+    .header h2 { font-size: 1.35rem; color: var(--primary); display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; letter-spacing: 0.3px; }
+    .header p { color: var(--text-muted); font-size: 0.84rem; margin-top: 4px; }
+    .btn-header-logout {
+      position: absolute; right: 0; top: 0;
+      background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35);
+      color: #fca5a5; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+      font-size: 0.78rem; font-weight: 600; transition: all 0.2s;
+    }
+    .btn-header-logout:hover { background: #ef4444; color: #fff; }
+
     /* Tabs Navigation */
-    .tabs { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
-    .tab-btn { flex: 1; padding: 10px 12px; background: transparent; border: 1px solid transparent; border-radius: 8px; color: var(--text-muted); font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px; }
-    .tab-btn:hover { background: rgba(255,255,255,0.05); color: #fff; }
-    .tab-btn.active { background: #0284c7; color: #fff; border-color: #38bdf8; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+    .tab-btn { flex: 1; padding: 10px 14px; background: var(--card-inner); border: 1px solid var(--border); border-radius: 6px; color: var(--text-muted); font-weight: 600; font-size: 0.88rem; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px; }
+    .tab-btn:hover { background: #0f1c3f; color: #fff; }
+    .tab-btn.active { background: var(--primary-btn); color: #fff; border-color: var(--primary); font-weight: 700; box-shadow: 0 0 10px rgba(0,229,255,0.25); }
     
     .tab-pane { display: none; }
     .tab-pane.active { display: block; animation: fadeIn 0.2s ease-in-out; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
     .form-group { margin-bottom: 16px; }
-    label { display: block; font-size: 0.88rem; font-weight: 600; margin-bottom: 6px; color: var(--text); }
+    label { display: block; font-size: 0.86rem; font-weight: 600; margin-bottom: 6px; color: var(--text); }
     .hint { font-size: 0.78rem; color: var(--text-muted); margin-top: 4px; line-height: 1.4; }
     input[type="text"], input[type="password"], select, textarea {
-      width: 100%; padding: 10px 14px; background: var(--card-inner); border: 1px solid var(--border); border-radius: 8px; color: #fff; font-size: 0.92rem; outline: none; transition: border 0.2s;
+      width: 100%; padding: 10px 14px; background: var(--card-inner); border: 1px solid var(--border); border-radius: 6px; color: #fff; font-size: 0.92rem; outline: none; transition: border-color 0.2s, box-shadow 0.2s;
     }
-    input:focus, select:focus, textarea:focus { border-color: var(--primary); }
+    input:focus, select:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 8px rgba(0, 229, 255, 0.35); }
     textarea { resize: vertical; min-height: 60px; }
 
     /* WhatsApp Status Card */
-    .status-card { background: var(--card-inner); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-bottom: 18px; text-align: center; }
-    .badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 0.82rem; font-weight: 600; text-transform: uppercase; margin-bottom: 10px; }
-    .badge-open { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid var(--success); }
-    .badge-qr { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid var(--warning); }
-    .badge-connecting { background: rgba(6, 182, 212, 0.2); color: #22d3ee; border: 1px solid var(--primary); }
-    .badge-disconnected { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid var(--danger); }
+    .status-card { background: var(--card-inner); border: 1px solid var(--border); border-radius: 8px; padding: 18px; margin-bottom: 18px; text-align: center; }
+    .badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.82rem; font-weight: 600; text-transform: uppercase; margin-bottom: 10px; }
+    .badge-open { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid var(--success); }
+    .badge-qr { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid var(--warning); }
+    .badge-connecting { background: rgba(6, 182, 212, 0.15); color: #22d3ee; border: 1px solid var(--primary); }
+    .badge-disconnected { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid var(--danger); }
 
     .qr-box { margin-top: 12px; }
-    .qr-box img { width: 230px; height: 230px; background: #fff; padding: 8px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.6); }
+    .qr-box img { width: 230px; height: 230px; background: #fff; padding: 8px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.6); }
 
     .btn-row { display: flex; gap: 12px; margin-top: 22px; }
-    button { flex: 1; padding: 11px 16px; border: none; border-radius: 8px; font-weight: 600; font-size: 0.92rem; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
-    .btn-save { background: var(--primary); color: #000; }
-    .btn-save:hover { background: var(--primary-hover); }
-    .btn-test { background: #334155; color: #fff; }
-    .btn-test:hover { background: #475569; }
-    .btn-logout { background: #7f1d1d; color: #fca5a5; border: 1px solid #ef4444; padding: 6px 14px; font-size: 0.85rem; border-radius: 6px; margin-top: 10px; display: inline-flex; }
-    .btn-logout:hover { background: #991b1b; color: #fff; }
+    button { flex: 1; padding: 11px 16px; border: none; border-radius: 6px; font-weight: 600; font-size: 0.92rem; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .btn-save { background: linear-gradient(135deg, #046380 0%, #0891b2 100%); color: #fff; font-weight: 700; border: 1px solid #00e5ff; box-shadow: 0 2px 8px rgba(4,99,128,0.4); }
+    .btn-save:hover { background: #00e5ff; color: #000; box-shadow: 0 0 14px rgba(0,229,255,0.6); }
+    .btn-test { background: #131e3d; border: 1px solid #23355e; color: #e2e8f0; }
+    .btn-test:hover { background: #1c2b54; color: #fff; }
+    .btn-logout { background: #450a0a; color: #fca5a5; border: 1px solid #ef4444; padding: 6px 14px; font-size: 0.85rem; border-radius: 6px; margin-top: 10px; display: inline-flex; }
+    .btn-logout:hover { background: #7f1d1d; color: #fff; }
     .btn-reset-wa {
-      background: #7f1d1d;
+      background: #450a0a;
       color: #fca5a5;
-      border: 1px solid #ef4444;
+      border: 1px solid #dc2626;
       padding: 9px 18px;
       font-size: 0.88rem;
       font-weight: 600;
-      border-radius: 8px;
+      border-radius: 6px;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
@@ -1677,24 +1687,28 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
       transition: all 0.2s;
     }
     .btn-reset-wa:hover {
-      background: #991b1b;
+      background: #7f1d1d;
       color: #fff;
-      box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+      box-shadow: 0 0 10px rgba(220,38,38,0.4);
     }
 
-    .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 0.9rem; display: none; }
-    .alert-success { background: rgba(16, 185, 129, 0.2); border: 1px solid var(--success); color: #34d399; }
-    .alert-error { background: rgba(239, 68, 68, 0.2); border: 1px solid var(--danger); color: #f87171; }
+    .alert { padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 0.9rem; display: none; }
+    .alert-success { background: rgba(16, 185, 129, 0.15); border: 1px solid var(--success); color: #34d399; }
+    .alert-error { background: rgba(239, 68, 68, 0.15); border: 1px solid var(--danger); color: #f87171; }
     .back-link { display: inline-block; margin-top: 18px; text-decoration: none; color: var(--primary); font-size: 0.85rem; font-weight: 500; }
     .back-link:hover { text-decoration: underline; }
-  </style>
-</head>
+
+    /* In-Iframe styling: seamlessly blend with GenieACS SPA */
+    body.in-iframe { padding: 8px 12px; }
+    body.in-iframe .container { max-width: 100%; border: 1px solid var(--border); box-shadow: none; background: rgba(8, 13, 34, 0.85); }
+    body.in-iframe #backToAcs { display: none !important; }
+  </style></head>
 <body>
   <div class="container">
     <div class="header">
       <div style="display: flex; align-items: center; justify-content: space-between; position: relative;">
         <h2 style="margin: 0 auto; display: flex; align-items: center; gap: 8px;">🤖 Pengaturan Bot AI & WhatsApp</h2>
-        <button type="button" onclick="handleAdminLogout()" style="position: absolute; right: 0; background: rgba(239, 68, 68, 0.15); border: 1px solid var(--danger); color: #fca5a5; padding: 5px 12px; border-radius: 8px; cursor: pointer; font-size: 0.78rem; font-weight: 600;">🚪 Logout</button>
+        <button type="button" onclick="handleAdminLogout()" class="btn-header-logout">🚪 Logout</button>
       </div>
       <p>Panel Kontrol TR-069 GenieACS, Bot Telegram & Gateway WhatsApp Baileys</p>
     </div>
@@ -1814,6 +1828,9 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
   </div>
 
   <script>
+    if (window.self !== window.top) {
+      document.body.classList.add('in-iframe');
+    }
     document.getElementById('backToAcs').href = window.location.protocol + '//' + window.location.hostname + ':3000';
 
     function switchTab(tabId) {
@@ -2007,11 +2024,13 @@ HTML_LOGIN_PAGE = """<!DOCTYPE html>
   <title>Login Administrator - Bot AI & WA GenieACS</title>
   <style>
     :root {
-      --bg: #0b1120;
-      --card: #1e293b;
-      --border: #334155;
-      --primary: #06b6d4;
-      --primary-hover: #0891b2;
+      --bg: #050833;
+      --card: #080d22;
+      --card-inner: #040714;
+      --border: #1c274c;
+      --primary: #00e5ff;
+      --primary-btn: #046380;
+      --primary-hover: #00b4d8;
       --text: #f8fafc;
       --text-muted: #94a3b8;
       --danger: #ef4444;
@@ -2056,7 +2075,7 @@ HTML_LOGIN_PAGE = """<!DOCTYPE html>
     input {
       width: 100%;
       padding: 11px 14px;
-      background: #0f172a;
+      background: #040714;
       border: 1px solid var(--border);
       border-radius: 8px;
       color: #fff;
@@ -2262,8 +2281,7 @@ class BotConfigHandler(BaseHTTPRequestHandler):
     def send_html(self, content_str, status=200, extra_headers=None):
         self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("X-Frame-Options", "SAMEORIGIN")
-        self.send_header("Content-Security-Policy", "frame-ancestors 'self' http://*:3000 https://*:3000")
+        self.send_header("Content-Security-Policy", "frame-ancestors 'self' http://*:3000 https://*:3000 http://* https://*")
         if extra_headers:
             for hk, hv in extra_headers.items():
                 self.send_header(hk, hv)
