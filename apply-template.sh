@@ -127,8 +127,10 @@ if [ -n "$MOD_ARCHIVE" ] && [ -f "$MOD_ARCHIVE" ]; then
   
   if [ -n "$GENIE_DIR" ]; then
     tar -zxf "$MOD_ARCHIVE" -C "$GENIE_DIR/"
+    chmod +x "$GENIE_DIR/bin/"* 2>/dev/null || true
     cp -f "$GENIE_DIR/bin/"* /usr/bin/ 2>/dev/null || true
     cp -f "$GENIE_DIR/bin/"* /usr/local/bin/ 2>/dev/null || true
+    chmod +x /usr/bin/genieacs-* /usr/local/bin/genieacs-* 2>/dev/null || true
     echo -e "${GREEN}[OK] File frontend Multi-Tab & Binaries berhasil diterapkan!${NC}"
   fi
 fi
@@ -206,7 +208,8 @@ echo -e "${GREEN}═════════════════════
 echo -e "${BOLD}${GREEN}✔ SUKSES! Tampilan, Fitur Informatif & Telegram Bot Berhasil Aktif!${NC}"
 echo -e "${CYAN}• Tab Aktif    : LAN, WAN (Add WAN Button), WLAN (Multi-SSID), USER, TR069${NC}"
 echo -e "${CYAN}• Fitur Data   : Optical Power Rx/Tx, Host LAN Clients, WiFi Clients RSSI${NC}"
-echo -e "${CYAN}• Telegram Bot : AKTIF (Ketik '${YELLOW}set-bot${CYAN}' di terminal atau via Admin -> Config)${NC}"
+echo -e "${CYAN}• Telegram Bot : AKTIF (Port 7558 / ketik 'set-bot' di terminal)${NC}"
+echo -e "${YELLOW}• Web Bot UI   : Buka menu '🤖 Bot Telegram' di GenieACS atau port 7558${NC}"
 echo -e "${CYAN}• Status Sesi  : Provision Bebas Fault & Kompatibel Semua Merk ONT${NC}"
 echo -e "${YELLOW}Silakan buka browser dan refresh (Ctrl + F5) pada halaman GenieACS UI.${NC}"
 echo -e "${GREEN}══════════════════════════════════════════════════════════════════════${NC}"

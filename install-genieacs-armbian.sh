@@ -329,8 +329,10 @@ if [ -n "$MOD_ARCHIVE" ] && [ -f "$MOD_ARCHIVE" ]; then
   
   if [ -n "$GENIE_DIR" ]; then
     tar -zxf "$MOD_ARCHIVE" -C "$GENIE_DIR/"
+    chmod +x "$GENIE_DIR/bin/"* 2>/dev/null || true
     cp -f "$GENIE_DIR/bin/"* /usr/bin/ 2>/dev/null || true
     cp -f "$GENIE_DIR/bin/"* /usr/local/bin/ 2>/dev/null || true
+    chmod +x /usr/bin/genieacs-* /usr/local/bin/genieacs-* 2>/dev/null || true
     echo -e "${GREEN}[OK] File frontend Multi-Tab & Binaries berhasil diterapkan!${NC}"
   fi
 fi
@@ -508,7 +510,8 @@ echo -e "${CYAN}║${NC}  🔑 ${BOLD}Login Bawaan${NC}         : ${GREEN}admin$
 echo -e "${CYAN}║${NC}  📡 ${BOLD}URL CWMP (Modem ONT)${NC} : ${YELLOW}${BOLD}http://${IP_ADDRESS}:7547${NC}"
 echo -e "${CYAN}║${NC}  🔌 ${BOLD}Port NBI (REST API)${NC}  : ${WHITE}http://${IP_ADDRESS}:7557${NC}"
 echo -e "${CYAN}║${NC}  📁 ${BOLD}Port FS (File Server)${NC}: ${WHITE}http://${IP_ADDRESS}:7567${NC}"
-echo -e "${CYAN}║${NC}  🤖 ${BOLD}AI Telegram Agent${NC}    : ${GREEN}AKTIF (Ketik '${YELLOW}set-bot${GREEN}' di terminal SSH)${NC}"
+echo -e "${CYAN}║${NC}  🤖 ${BOLD}AI Telegram Agent${NC}    : ${GREEN}AKTIF (Port 7558 / ketik 'set-bot')${NC}"
+echo -e "${CYAN}║${NC}  ⚙️ ${BOLD}Web Pengaturan Bot${NC}   : ${YELLOW}${BOLD}http://${IP_ADDRESS}:7558${NC} (atau via Menu UI)"
 echo -e "${CYAN}║${NC}  ⚡ ${BOLD}Status Layanan${NC}       : ${GREEN}MongoDB & 4 Service GenieACS AKTIF (OK)${NC}"
 echo -e "${CYAN}║${NC}  🛡️ ${BOLD}Proteksi Storage${NC}     : ${GREEN}Logrotate & Ramlog AKTIF (Bebas Disk Penuh)${NC}"
 echo -e "${CYAN}╠══════════════════════════════════════════════════════════════════════╣${NC}"
