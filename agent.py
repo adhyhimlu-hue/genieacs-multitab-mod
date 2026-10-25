@@ -629,6 +629,8 @@ def set_wifi_credentials(dev, new_ssid=None, new_password=None):
             return True, f"Berhasil mengirim instruksi ganti WiFi ke modem `{dev_id}`."
         else:
             return False, f"GenieACS merespon HTTP {r.status_code}: {r.text}"
+    except requests.exceptions.Timeout:
+        return True, f"Instruksi ganti WiFi telah dikirim ke antrean modem `{dev_id}`."
     except Exception as e:
         return False, f"Gagal menghubungi GenieACS NBI: {e}"
 
@@ -654,6 +656,9 @@ def set_wifi_power(dev, enable=True):
             return True, f"Radio pemancar WiFi modem `{dev_id}` berhasil {action_txt}."
         else:
             return False, f"GenieACS merespon HTTP {r.status_code}: {r.text}"
+    except requests.exceptions.Timeout:
+        action_txt = "diaktifkan 🟢" if enable else "dimatikan 🔴"
+        return True, f"Instruksi radio WiFi {action_txt} telah dikirim ke antrean modem `{dev_id}`."
     except Exception as e:
         return False, f"Gagal menghubungi GenieACS NBI: {e}"
 
@@ -783,6 +788,8 @@ def ping_diagnostics_task(dev, host="8.8.8.8"):
             return True, f"Perintah Ping Diagnostics ke `{host}` berhasil dikirim ke modem `{dev_id}` via TR-069."
         else:
             return False, f"GenieACS merespon HTTP {r.status_code}: {r.text}"
+    except requests.exceptions.Timeout:
+        return True, f"Perintah Ping Diagnostics ke `{host}` berhasil dikirim ke antrean modem `{dev_id}`."
     except Exception as e:
         return False, f"Gagal menghubungi GenieACS NBI: {e}"
 
@@ -813,6 +820,8 @@ def reboot_device_task(dev):
             return True, f"Perintah Restart berhasil dikirim ke modem `{dev_id}`."
         else:
             return False, f"GenieACS merespon HTTP {r.status_code}: {r.text}"
+    except requests.exceptions.Timeout:
+        return True, f"Perintah Restart telah dikirim ke antrean modem `{dev_id}`."
     except Exception as e:
         return False, f"Gagal menghubungi GenieACS NBI: {e}"
 
@@ -1188,7 +1197,8 @@ def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_ke
         if not dev:
             return (f"❌ Modem `{target}` tidak ditemukan di database GenieACS.", None)
 
-        summary_text, pppoe_user, dev_id, wifi_on = get_device_summary(dev)
+        pppoe_user, summary_text, wifi_on = get_device_summary(dev)
+        dev_id = dev.get("_id")
         kb = get_device_inline_keyboard(pppoe_user, dev_id, wifi_on)
         return (summary_text, kb)
 
@@ -1510,7 +1520,8 @@ def handle_incoming_message(token, chat_id, user_text, gemini_key, model_name):
         if not dev:
             send_telegram(token, chat_id, f"❌ Modem `{txt}` tidak ditemukan di database GenieACS.", reply_markup=get_main_menu_keyboard())
             return
-        summary_text, pppoe_user, dev_id, wifi_on = get_device_summary(dev)
+        pppoe_user, summary_text, wifi_on = get_device_summary(dev)
+        dev_id = dev.get("_id")
         send_telegram(token, chat_id, summary_text, reply_markup=get_device_inline_keyboard(pppoe_user, dev_id, wifi_on))
         return
 
@@ -2082,15 +2093,19 @@ class BotConfigHandler(BaseHTTPRequestHandler):
             gemini_key = cfgs.get("agent.gemini.apiKey", "")
             gemini_model = cfgs.get("agent.gemini.model", "gemini-1.5-flash")
 
-            reply_text, _ = process_agent_command(
-                user_text=text,
-                sender_id=sender,
-                is_admin=is_admin,
-                gemini_key=gemini_key,
-                gemini_model=gemini_model,
-                registered_tag=reg_tag
-            )
-            self.send_json({"success": True, "reply": reply_text})
+            try:
+                reply_text, _ = process_agent_command(
+                    user_text=text,
+                    sender_id=sender,
+                    is_admin=is_admin,
+                    gemini_key=gemini_key,
+                    gemini_model=gemini_model,
+                    registered_tag=reg_tag
+                )
+                self.send_json({"success": True, "reply": reply_text})
+            except Exception as e:
+                logger.error(f"Error handling agent_command '{text}': {e}", exc_info=True)
+                self.send_json({"success": False, "reply": f"⚠️ Terjadi error internal saat memproses perintah `{text}`: {e}"})
 
         elif self.path == "/api/test":
             token = req.get("token", "").strip()

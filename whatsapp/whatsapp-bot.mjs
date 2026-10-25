@@ -646,9 +646,15 @@ export async function startWhatsAppBot() {
                 await reply(resData.reply);
                 continue;
               }
+            } else {
+              console.error(`[WA] GenieACS Agent API HTTP error: ${agentRes.status}`);
             }
           } catch (agentErr) {
             console.error('[WA] Gagal menghubungi GenieACS Agent API:', agentErr.message);
+            if (isAdmin && cmd !== 'menu' && cmd !== 'bantuan' && cmd !== 'help') {
+              await reply(`⚠️ Layanan Agent GenieACS (Port 7558) belum merespon: ${agentErr.message}`);
+              continue;
+            }
           }
 
           // Fallback lokal jika Agent API belum merespon
