@@ -1902,10 +1902,10 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
       const targetPane = document.getElementById(tabId);
       if (targetPane) targetPane.classList.add('active');
 
-      if (event && event.currentTarget && event.currentTarget.classList) {
+      if (typeof event !== 'undefined' && event && event.currentTarget && event.currentTarget.classList) {
         event.currentTarget.classList.add('active');
       } else {
-        const clickedBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.getAttribute('onclick')?.includes(tabId));
+        const clickedBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.getAttribute('onclick') && b.getAttribute('onclick').indexOf(tabId) !== -1);
         if (clickedBtn) clickedBtn.classList.add('active');
       }
 
@@ -1918,8 +1918,9 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
         checkSystemUpdate(true);
       }
     }
+    window.switchTab = switchTab;
 
-    async function checkSystemUpdate(silenceSuccess = false) {
+    async function checkSystemUpdate(silenceSuccess) {
       const btn = document.getElementById('btnCheckUpdate');
       const badge = document.getElementById('updateBadge');
       if (btn) {
@@ -1967,9 +1968,11 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
         }
       }
     }
+    window.checkSystemUpdate = checkSystemUpdate;
 
     async function applySystemUpdate() {
-      if (!confirm("Apakah Anda yakin ingin memperbarui sistem ke versi terbaru dari GitHub?\n\nService GenieACS akan direstart secara otomatis.")) {
+      const confirmText = 'Apakah Anda yakin ingin memperbarui sistem ke versi terbaru dari GitHub?' + String.fromCharCode(10) + String.fromCharCode(10) + 'Service GenieACS akan direstart secara otomatis.';
+      if (!confirm(confirmText)) {
         return;
       }
 
@@ -1981,7 +1984,7 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
       btnApply.disabled = true;
       btnApply.textContent = '🚀 Sedang Memperbarui...';
       logWrapper.style.display = 'block';
-      logBox.textContent = 'Memulai proses update...\n';
+      logBox.textContent = 'Memulai proses update...' + String.fromCharCode(10);
       progressText.textContent = 'Mengunduh dari GitHub...';
 
       try {
@@ -1998,7 +2001,7 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
           let countdown = 6;
           const interval = setInterval(() => {
             countdown--;
-            progressText.textContent = `Memuat ulang halaman dalam ${countdown} detik...`;
+            progressText.textContent = 'Memuat ulang halaman dalam ' + countdown + ' detik...';
             if (countdown <= 0) {
               clearInterval(interval);
               window.location.reload();
@@ -2012,12 +2015,12 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
           btnApply.textContent = '🚀 Coba Perbarui Lagi';
         }
       } catch (err) {
-        logBox.textContent += '\nError jaringan: ' + err.message;
+        logBox.textContent += String.fromCharCode(10) + 'Error: ' + err.message;
         progressText.textContent = '⚠️ Service sedang restart...';
         let countdown = 6;
         const interval = setInterval(() => {
           countdown--;
-          progressText.textContent = `Service sedang restart. Memuat ulang dalam ${countdown} detik...`;
+          progressText.textContent = 'Service sedang restart. Memuat ulang dalam ' + countdown + ' detik...';
           if (countdown <= 0) {
             clearInterval(interval);
             window.location.reload();
@@ -2025,109 +2028,123 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
         }, 1000);
       }
     }
+    window.applySystemUpdate = applySystemUpdate;
 
     function showAlert(msg, isSuccess) {
       const box = document.getElementById('alertBox');
       box.textContent = msg;
       box.className = 'alert ' + (isSuccess ? 'alert-success' : 'alert-error');
       box.style.display = 'block';
-      box.scrollIntoView({ behavior: 'smooth' });
+      box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setTimeout(() => { box.style.display = 'none'; }, 6000);
     }
 
     // Load initial config
     fetch('/api/config')
-      .then(r => r.json())
+      .then(res => {
+        if (!res.ok) throw new Error('Status: ' + res.status);
+        return res.json();
+      })
       .then(data => {
         document.getElementById('bot_enabled').value = data.enabled || 'true';
         document.getElementById('bot_token').value = data.token || '';
         document.getElementById('admin_id').value = data.admin_id || '';
-        document.getElementById('brand_name').value = data.brand_name || 'ALIJAYA NET';
-        document.getElementById('brand_phone').value = data.brand_phone || '081947215703';
+        document.getElementById('brand_name').value = data.brand_name || '';
+        document.getElementById('brand_phone').value = data.brand_phone || '';
         document.getElementById('gemini_key').value = data.gemini_key || '';
-        document.getElementById('wa_enabled').value = data.wa_enabled || 'true';
-        document.getElementById('wa_admin_numbers').value = data.wa_admin_numbers || data.brand_phone || '081947215703';
+        document.getElementById('wa_enabled').value = data.wa_enabled !== undefined ? String(data.wa_enabled) : 'true';
+        document.getElementById('wa_admin_numbers').value = data.wa_admin_numbers || '';
       })
-      .catch(e => console.error(e));
+      .catch(err => showAlert('❌ Gagal memuat konfigurasi: ' + err.message, false));
 
     // WhatsApp Live Status Polling
-    function pollWhatsAppStatus() {
+    let pollInterval = null;
+    function updateWaStatus() {
       fetch('/api/whatsapp/status')
-        .then(r => r.json())
-        .then(st => {
+        .then(res => res.json())
+        .then(data => {
           const badge = document.getElementById('waBadge');
           const connBox = document.getElementById('waConnectedBox');
           const qrBox = document.getElementById('waQrBox');
           const offBox = document.getElementById('waOfflineBox');
-          const qrImg = document.getElementById('waQrImg');
-          const waUser = document.getElementById('waUser');
 
-          if (!st || st.connection === 'disconnected' || st.error) {
-            badge.className = 'badge badge-disconnected';
-            badge.textContent = 'TERPUTUS / OFFLINE';
-            connBox.style.display = 'none';
-            qrBox.style.display = 'none';
-            offBox.style.display = 'block';
-          } else if (st.connection === 'open') {
+          connBox.style.display = 'none';
+          qrBox.style.display = 'none';
+          offBox.style.display = 'none';
+
+          if (data.connection === 'open') {
             badge.className = 'badge badge-open';
-            badge.textContent = 'TERHUBUNG (CONNECTED) 🟢';
-            const userStr = st.user ? (st.user.id || st.user.name || 'Bot Terhubung') : 'Aktif';
-            waUser.textContent = userStr.replace(':1@s.whatsapp.net', '').replace('@s.whatsapp.net', '');
+            badge.textContent = '🟢 TERHUBUNG (ONLINE)';
             connBox.style.display = 'block';
-            qrBox.style.display = 'none';
-            offBox.style.display = 'none';
-          } else if (st.qrImage || st.qr || st.connection === 'qr') {
+            document.getElementById('waUser').textContent = data.user ? (data.user.name || data.user.id) : '-';
+          } else if (data.connection === 'qr') {
             badge.className = 'badge badge-qr';
-            badge.textContent = 'MENUNGGU PINDAI QR 🟡';
-            qrImg.src = st.qrImage;
+            badge.textContent = '📷 MENUNGGU SCAN QR CODE';
             qrBox.style.display = 'block';
-            connBox.style.display = 'none';
-            offBox.style.display = 'none';
-          } else if (st.connection === 'connecting') {
+            if (data.qr) {
+              document.getElementById('waQrImg').src = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=' + encodeURIComponent(data.qr);
+            }
+          } else if (data.connection === 'connecting') {
             badge.className = 'badge badge-connecting';
-            badge.textContent = 'MENGHUBUNGKAN... ⏳';
-            connBox.style.display = 'none';
-            qrBox.style.display = 'none';
-            offBox.style.display = 'none';
+            badge.textContent = '🔄 MENGHUBUNGKAN...';
           } else {
             badge.className = 'badge badge-disconnected';
-            badge.textContent = (st.connection || 'LOGGED OUT').toUpperCase();
-            connBox.style.display = 'none';
-            qrBox.style.display = 'none';
-            offBox.style.display = 'none';
+            badge.textContent = '🔴 TERPUTUS (OFFLINE)';
+            offBox.style.display = 'block';
           }
         })
         .catch(() => {
           const badge = document.getElementById('waBadge');
           badge.className = 'badge badge-disconnected';
-          badge.textContent = 'OFFLINE';
+          badge.textContent = '🔴 SERVICE OFFLINE';
+          document.getElementById('waConnectedBox').style.display = 'none';
+          document.getElementById('waQrBox').style.display = 'none';
+          document.getElementById('waOfflineBox').style.display = 'block';
         });
     }
 
-    pollWhatsAppStatus();
-    setInterval(pollWhatsAppStatus, 3000);
-
-    function resetWA() {
-      if (!confirm('Apakah Anda yakin ingin MENGHAPUS SESI WHATSAPP? Data sesi login lama akan dibersihkan agar Anda dapat mengganti nomor WhatsApp bot baru.')) {
-        return;
-      }
-      const badge = document.getElementById('waBadge');
-      badge.className = 'badge badge-connecting';
-      badge.textContent = 'MENGHAPUS SESI & RESET... ⏳';
-
-      fetch('/api/whatsapp/reset', { method: 'POST' })
-        .then(r => r.json())
-        .then(res => {
-          showAlert('✅ Sesi WhatsApp lama berhasil dihapus! Menyiapkan QR Code baru...', true);
-          setTimeout(pollWhatsAppStatus, 1500);
-        })
-        .catch(err => showAlert('❌ Gagal menghapus sesi: ' + err.message, false));
-    }
+    updateWaStatus();
+    pollInterval = setInterval(updateWaStatus, 3000);
 
     function logoutWA() {
-      resetWA();
+      if (confirm('Yakin ingin memutuskan koneksi WhatsApp bot?')) {
+        fetch('/api/whatsapp/logout', { method: 'POST' })
+          .then(res => res.json())
+          .then(d => {
+            showAlert('Sesi WhatsApp berhasil diputus', true);
+            updateWaStatus();
+          })
+          .catch(err => showAlert('❌ Gagal logout WhatsApp: ' + err.message, false));
+      }
     }
+    window.logoutWA = logoutWA;
 
-    // Save Form Handler
+    function resetWA() {
+      const confirmReset = '⚠️ PERHATIAN:' + String.fromCharCode(10) + String.fromCharCode(10) + 'Tindakan ini akan menghapus sesi WhatsApp bot di server dan membuat ulang QR Code.' + String.fromCharCode(10) + String.fromCharCode(10) + 'Apakah Anda yakin ingin melanjutkan?';
+      if (confirm(confirmReset)) {
+        const btn = document.querySelector('.btn-reset-wa');
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = '⏳ Menghapus sesi WhatsApp...';
+        }
+        fetch('/api/whatsapp/reset', { method: 'POST' })
+          .then(res => res.json())
+          .then(d => {
+            showAlert('✅ ' + (d.message || 'Sesi WhatsApp berhasil dihapus. Silakan tunggu QR Code baru.'), true);
+            setTimeout(updateWaStatus, 2000);
+          })
+          .catch(err => showAlert('❌ Gagal reset WhatsApp: ' + err.message, false))
+          .finally(() => {
+            if (btn) {
+              btn.disabled = false;
+              btn.textContent = '🗑️ Hapus Sesi WhatsApp (Ganti Nomor Bot / Buat QR Baru)';
+            }
+          });
+      }
+    }
+    window.resetWA = resetWA;
+
+    // Handle Form Submit
     document.getElementById('botForm').addEventListener('submit', function(e) {
       e.preventDefault();
       const payload = {
@@ -2146,39 +2163,41 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       })
-      .then(r => r.json())
-      .then(res => {
-        if (res.success) {
-          showAlert('✅ Konfigurasi bot berhasil disimpan dan langsung diterapkan!', true);
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          showAlert('✅ Konfigurasi Bot berhasil disimpan!', true);
         } else {
-          showAlert('❌ Gagal menyimpan: ' + (res.message || 'Error MongoDB'), false);
+          showAlert('❌ ' + (data.message || 'Gagal menyimpan konfigurasi'), false);
         }
       })
-      .catch(err => showAlert('❌ Gagal menghubungi server: ' + err.message, false));
+      .catch(err => showAlert('❌ Error: ' + err.message, false));
     });
 
-    // Test Telegram Handler
+    // Test Telegram message
     document.getElementById('btnTest').addEventListener('click', function() {
-      const token = document.getElementById('bot_token').value;
-      const admin_id = document.getElementById('admin_id').value;
-      if (!token || !admin_id) {
-        showAlert('Token Telegram dan Admin Chat ID harus diisi untuk pengujian!', false);
+      const token = document.getElementById('bot_token').value.trim();
+      const adminId = document.getElementById('admin_id').value.trim();
+
+      if (!token || !adminId) {
+        showAlert('⚠️ Harap isi Token Bot dan Admin Chat ID terlebih dahulu!', false);
         return;
       }
-      this.textContent = '⏳ Mengirim...';
+
+      this.textContent = '⏳ Mengirim pesan...';
       this.disabled = true;
 
-      fetch('/api/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: token, admin_id: admin_id })
-      })
-      .then(r => r.json())
+      const targetId = adminId.split(',')[0].trim();
+      const testMsg = '🔔 *TES NOTIFIKASI GENIEACS BOT*' + String.fromCharCode(10) + String.fromCharCode(10) + 'Koneksi bot Telegram ALIJAYA NET berhasil terhubung dengan server!';
+      const tgUrl = 'https://api.telegram.org/bot' + token + '/sendMessage?chat_id=' + targetId + '&text=' + encodeURIComponent(testMsg) + '&parse_mode=Markdown';
+
+      fetch(tgUrl)
+      .then(res => res.json())
       .then(res => {
-        if (res.success) {
-          showAlert('✅ Notifikasi tes berhasil terkirim ke Telegram Anda!', true);
+        if (res.ok) {
+          showAlert('✅ Pesan tes Telegram berhasil terkirim ke ' + targetId + '!', true);
         } else {
-          showAlert('❌ Gagal mengirim tes: ' + (res.message || 'Periksa token & chat ID'), false);
+          showAlert('❌ Gagal kirim Telegram: ' + (res.description || 'Unknown error'), false);
         }
       })
       .catch(err => showAlert('❌ Error: ' + err.message, false))
@@ -2196,6 +2215,7 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
         window.location.reload();
       }
     }
+    window.handleAdminLogout = handleAdminLogout;
   </script>
 </body>
 </html>
