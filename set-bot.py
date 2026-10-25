@@ -57,13 +57,50 @@ def reset_whatsapp_session():
     try:
         subprocess.run(["systemctl", "restart", "genieacs-whatsapp.service"], check=False)
         print("  ✔ Layanan genieacs-whatsapp berhasil direstart.")
-        print("  ℹ Silakan buka Web UI http://IP_SERVER:7558 untuk scan QR Code baru.")
+        print("  ℹ Silakan buka Web UI http://IP_SERVER:7558 atau ketik 'set-bot qr' untuk scan QR Code baru.")
     except Exception as e:
         print(f"  ⚠ Gagal restart genieacs-whatsapp: {e}")
+
+def show_whatsapp_qr():
+    print("\n📷 Memeriksa status & QR Code WhatsApp...")
+    try:
+        node_cmd = """import q from 'qrcode-terminal';
+import http from 'http';
+http.get('http://127.0.0.1:7559/status', (r) => {
+  let b = '';
+  r.on('data', c => b += c);
+  r.on('end', () => {
+    try {
+      const d = JSON.parse(b);
+      if (d.qr) {
+        console.log('\\n📷 PINDAI QR CODE WHATSAPP INI DENGAN HP ANDA:');
+        console.log('(Buka WhatsApp -> Perangkat Tertaut -> Tautkan Perangkat)\\n');
+        q.generate(d.qr, { small: true });
+        console.log('\\nStatus: Menunggu Scan QR Code.');
+        console.log('Atau buka Web UI di browser: http://IP_SERVER:7558 (Tab WhatsApp)');
+      } else if (d.connection === 'open') {
+        console.log('\\n✅ WhatsApp SUDAH TERHUBUNG! Akun: ' + (d.user?.id || 'Bot Aktif'));
+      } else {
+        console.log('\\nStatus WhatsApp: ' + (d.connection || 'Menghubungkan...'));
+        console.log('Silakan coba beberapa detik lagi atau buka Web UI di http://IP_SERVER:7558');
+      }
+    } catch (e) {
+      console.error(e.message);
+    }
+  });
+}).on('error', (e) => console.error('Gagal menghubungi port 7559: ' + e.message));"""
+        cwd_dir = "/opt/genieacs-agent" if os.path.exists("/opt/genieacs-agent") else "."
+        subprocess.run(["node", "--input-type=module", "-e", node_cmd], cwd=cwd_dir, check=False)
+    except Exception as e:
+        print(f"  ⚠ Gagal menampilkan QR di terminal: {e}")
 
 def main():
     if len(sys.argv) > 1 and sys.argv[1] in ["reset-wa", "hapus-sesi", "resetwa", "reset"]:
         reset_whatsapp_session()
+        sys.exit(0)
+
+    if len(sys.argv) > 1 and sys.argv[1] in ["qr", "qrcode", "scan"]:
+        show_whatsapp_qr()
         sys.exit(0)
 
     print("\n" + "═" * 68)
@@ -173,7 +210,9 @@ def main():
     print("\n" + "═" * 68)
     if status == "active":
         print("  ✔ SUKSES! Bot GenieACS AKTIF dan Siap Digunakan!")
-        print("  Buka Web UI di http://IP_SERVER:7558 untuk scan QR WhatsApp & monitor status.")
+        print("  • Buka Web UI di http://IP_SERVER:7558 (Tab WhatsApp)")
+        print("  • Atau ketik 'set-bot qr' untuk melihat QR Code WhatsApp di terminal")
+        print("  • Ketik 'set-bot reset-wa' untuk hapus sesi / ganti nomor bot")
     else:
         print(f"  ℹ Konfigurasi tersimpan. Status layanan: {status}")
     print("═" * 68 + "\n")

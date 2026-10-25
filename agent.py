@@ -16,6 +16,14 @@ import pymongo
 from urllib.parse import quote
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
+try:
+    from http.server import ThreadingHTTPServer as DefaultHTTPServer
+except ImportError:
+    from http.server import HTTPServer as DefaultHTTPServer
+try:
+    from http.server import ThreadingHTTPServer as DefaultHTTPServer
+except ImportError:
+    from http.server import HTTPServer as DefaultHTTPServer
 
 logging.basicConfig(
     level=logging.INFO,
@@ -1529,7 +1537,7 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
             connBox.style.display = 'block';
             qrBox.style.display = 'none';
             offBox.style.display = 'none';
-          } else if (st.connection === 'qr' && st.qrImage) {
+          } else if (st.qrImage || st.qr || st.connection === 'qr') {
             badge.className = 'badge badge-qr';
             badge.textContent = 'MENUNGGU PINDAI QR 🟡';
             qrImg.src = st.qrImage;
@@ -1561,7 +1569,7 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
     setInterval(pollWhatsAppStatus, 3000);
 
     function resetWA() {
-      if (!confirm('Apakah Anda yakin ingin MENGHAPUS SESI WHATSAPP?\n\nData sesi login lama akan dihapus bersih agar Anda dapat mengganti nomor WhatsApp bot baru.\nQR Code baru akan otomatis dibuat setelah sesi dihapus.')) {
+      if (!confirm('Apakah Anda yakin ingin MENGHAPUS SESI WHATSAPP? Data sesi login lama akan dibersihkan agar Anda dapat mengganti nomor WhatsApp bot baru.')) {
         return;
       }
       const badge = document.getElementById('waBadge');
@@ -1669,7 +1677,7 @@ class BotConfigHandler(BaseHTTPRequestHandler):
             self.send_json(data)
         elif self.path == "/api/whatsapp/status":
             try:
-                r = requests.get("http://127.0.0.1:7559/status", timeout=2.5)
+                r = requests.get("http://127.0.0.1:7559/status", timeout=5.0)
                 self.send_json(r.json())
             except Exception as e:
                 self.send_json({"connection": "disconnected", "error": str(e)})
@@ -1809,7 +1817,7 @@ class BotConfigHandler(BaseHTTPRequestHandler):
 
 def start_web_server(port=7558):
     try:
-        server = HTTPServer(("0.0.0.0", port), BotConfigHandler)
+        server = DefaultHTTPServer(("0.0.0.0", port), BotConfigHandler)
         logger.info(f"Bot Web Config UI berjalan di http://0.0.0.0:{port}")
         server.serve_forever()
     except Exception as e:

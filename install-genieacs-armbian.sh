@@ -513,7 +513,7 @@ After=network.target mongod.service genieacs-nbi.service genieacs-agent.service
 Type=simple
 User=root
 WorkingDirectory=/opt/genieacs-agent
-ExecStart=/usr/bin/node /opt/genieacs-agent/whatsapp-bot.mjs
+ExecStart=/usr/bin/node --experimental-global-webcrypto /opt/genieacs-agent/whatsapp-bot.mjs
 Restart=always
 RestartSec=5
 Environment=NODE_ENV=production

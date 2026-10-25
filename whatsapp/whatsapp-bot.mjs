@@ -1,6 +1,8 @@
 import nodeCrypto from 'crypto';
-if (!globalThis.crypto) {
-  globalThis.crypto = nodeCrypto.webcrypto || nodeCrypto;
+if (!globalThis.crypto || !globalThis.crypto.subtle) {
+  try {
+    globalThis.crypto = nodeCrypto.webcrypto || nodeCrypto;
+  } catch (_) {}
 }
 
 import http from 'http';
