@@ -14,6 +14,10 @@ import logging
 import subprocess
 import requests
 import pymongo
+import hmac
+import hashlib
+import base64
+import secrets
 from urllib.parse import quote
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -1688,7 +1692,10 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
 <body>
   <div class="container">
     <div class="header">
-      <h2>🤖 Pengaturan Bot AI (Telegram & WhatsApp)</h2>
+      <div style="display: flex; align-items: center; justify-content: space-between; position: relative;">
+        <h2 style="margin: 0 auto; display: flex; align-items: center; gap: 8px;">🤖 Pengaturan Bot AI & WhatsApp</h2>
+        <button type="button" onclick="handleAdminLogout()" style="position: absolute; right: 0; background: rgba(239, 68, 68, 0.15); border: 1px solid var(--danger); color: #fca5a5; padding: 5px 12px; border-radius: 8px; cursor: pointer; font-size: 0.78rem; font-weight: 600;">🚪 Logout</button>
+      </div>
       <p>Panel Kontrol TR-069 GenieACS, Bot Telegram & Gateway WhatsApp Baileys</p>
     </div>
 
@@ -1977,19 +1984,312 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
         this.disabled = false;
       });
     });
+
+    async function handleAdminLogout() {
+      if (confirm("Apakah Anda yakin ingin logout dari halaman pengaturan Bot?")) {
+        try {
+          await fetch('/api/logout', { method: 'POST' });
+        } catch (_) {}
+        window.location.reload();
+      }
+    }
   </script>
 </body>
 </html>
 """
 
 
+HTML_LOGIN_PAGE = """<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login Administrator - Bot AI & WA GenieACS</title>
+  <style>
+    :root {
+      --bg: #0b1120;
+      --card: #1e293b;
+      --border: #334155;
+      --primary: #06b6d4;
+      --primary-hover: #0891b2;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .login-box {
+      width: 100%;
+      max-width: 420px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 32px 28px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+      text-align: center;
+    }
+    .logo-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: rgba(6, 182, 212, 0.15);
+      color: var(--primary);
+      font-size: 30px;
+      margin-bottom: 16px;
+      border: 1px solid rgba(6, 182, 212, 0.3);
+    }
+    h2 { font-size: 1.4rem; margin-bottom: 6px; color: #fff; font-weight: 700; }
+    p.desc { font-size: 0.84rem; color: var(--text-muted); margin-bottom: 24px; line-height: 1.45; }
+    .form-group { text-align: left; margin-bottom: 18px; }
+    label { display: block; font-size: 0.84rem; font-weight: 600; margin-bottom: 6px; color: var(--text); }
+    input {
+      width: 100%;
+      padding: 11px 14px;
+      background: #0f172a;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: #fff;
+      font-size: 0.94rem;
+      outline: none;
+      transition: border 0.2s;
+    }
+    input:focus { border-color: var(--primary); }
+    .btn-login {
+      width: 100%;
+      padding: 12px;
+      margin-top: 8px;
+      background: var(--primary);
+      color: #0b1120;
+      font-weight: 700;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.96rem;
+      transition: background 0.2s;
+    }
+    .btn-login:hover { background: var(--primary-hover); }
+    .btn-login:disabled { opacity: 0.6; cursor: not-allowed; }
+    .alert-error {
+      display: none;
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid var(--danger);
+      color: #fca5a5;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 0.84rem;
+      margin-bottom: 18px;
+      text-align: left;
+    }
+    .footer { margin-top: 24px; font-size: 0.76rem; color: #64748b; }
+  </style>
+</head>
+<body>
+  <div class="login-box">
+    <div class="logo-badge">🔐</div>
+    <h2>Admin Login</h2>
+    <p class="desc">Portal Pengaturan Bot AI & WhatsApp GenieACS.<br>Silakan masuk menggunakan akun Administrator GenieACS.</p>
+    
+    <div id="errMsg" class="alert-error"></div>
+    
+    <form id="loginForm" onsubmit="handleLogin(event)">
+      <div class="form-group">
+        <label for="username">Username Admin</label>
+        <input type="text" id="username" autocomplete="username" placeholder="Masukkan username admin" required autofocus>
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" autocomplete="current-password" placeholder="Masukkan password" required>
+      </div>
+      <button type="submit" id="btnSubmit" class="btn-login">Masuk ke Pengaturan</button>
+    </form>
+    
+    <div class="footer">ALIJAYA NET TR-069 Management</div>
+  </div>
+
+  <script>
+    async function handleLogin(e) {
+      e.preventDefault();
+      const u = document.getElementById('username').value.trim();
+      const p = document.getElementById('password').value;
+      const btn = document.getElementById('btnSubmit');
+      const err = document.getElementById('errMsg');
+      
+      err.style.display = 'none';
+      btn.disabled = true;
+      btn.textContent = 'Memverifikasi...';
+      
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({username: u, password: p})
+        });
+        const data = await res.json();
+        if (data.success) {
+          window.location.reload();
+        } else {
+          err.textContent = data.message || 'Username atau password salah / bukan akun admin.';
+          err.style.display = 'block';
+        }
+      } catch (errEx) {
+        err.textContent = 'Gagal terhubung ke server autentikasi: ' + errEx.message;
+        err.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Masuk ke Pengaturan';
+      }
+    }
+  </script>
+</body>
+</html>
+"""
+
+ACTIVE_ADMIN_SESSIONS = {}
+
+def get_jwt_secret():
+    secret = os.environ.get("GENIEACS_UI_JWT_SECRET") or os.environ.get("UI_JWT_SECRET")
+    if not secret and os.path.exists("/opt/genieacs/genieacs.env"):
+        try:
+            with open("/opt/genieacs/genieacs.env", "r", encoding="utf-8") as f:
+                for line in f:
+                    if "GENIEACS_UI_JWT_SECRET=" in line:
+                        secret = line.split("GENIEACS_UI_JWT_SECRET=")[1].strip().strip('"').strip("'")
+                        break
+        except Exception:
+            pass
+    return secret or ""
+
+def verify_genieacs_jwt(token):
+    secret = get_jwt_secret()
+    if not secret:
+        return None
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            return None
+        h, p, s = parts
+        msg = f"{h}.{p}".encode("ascii")
+        expected = hmac.new(secret.encode("utf-8"), msg, hashlib.sha256).digest()
+        pad = "=" * ((4 - len(s) % 4) % 4)
+        actual = base64.urlsafe_b64decode((s + pad).encode("ascii"))
+        if not hmac.compare_digest(expected, actual):
+            return None
+        pad_p = "=" * ((4 - len(p) % 4) % 4)
+        payload = json.loads(base64.urlsafe_b64decode((p + pad_p).encode("ascii")).decode("utf-8"))
+        return payload
+    except Exception:
+        return None
+
+def verify_admin_login(username, password):
+    db = get_db()
+    if db is None:
+        return False, "Database MongoDB tidak terhubung."
+    user = db.users.find_one({"_id": username})
+    if not user:
+        return False, "Username atau password salah."
+    roles = [r.strip() for r in user.get("roles", "").split(",") if r.strip()]
+    if "admin" not in roles:
+        return False, "Akun ini tidak memiliki hak akses Administrator GenieACS."
+    salt = user.get("salt", "")
+    expected_hash = user.get("password", "")
+    computed_hash = hashlib.pbkdf2_hmac(
+        "sha512",
+        password.encode("utf-8"),
+        salt.encode("utf-8"),
+        10000,
+        dklen=128
+    ).hex()
+    if hmac.compare_digest(computed_hash, expected_hash):
+        return True, "Login berhasil."
+    return False, "Username atau password salah."
+
+
 class BotConfigHandler(BaseHTTPRequestHandler):
+    def parse_cookies(self):
+        cookie_header = self.headers.get("Cookie", "")
+        cookies = {}
+        if cookie_header:
+            for c in cookie_header.split(";"):
+                if "=" in c:
+                    k, v = c.strip().split("=", 1)
+                    cookies[k.strip()] = v.strip()
+        return cookies
+
+    def is_authenticated_admin(self):
+        client_ip = self.client_address[0] if self.client_address else ""
+        # Localhost bypass specifically for bot internal webhook
+        if client_ip in ("127.0.0.1", "::1", "localhost") and self.path == "/api/agent_command":
+            return True
+
+        cookies = self.parse_cookies()
+
+        # Check 1: SSO via GenieACS UI JWT cookie
+        jwt_cookie = cookies.get("genieacs-ui-jwt")
+        if jwt_cookie:
+            payload = verify_genieacs_jwt(jwt_cookie)
+            if payload and payload.get("username"):
+                username = payload.get("username")
+                db = get_db()
+                if db is not None:
+                    u = db.users.find_one({"_id": username})
+                    if u:
+                        roles = [r.strip() for r in u.get("roles", "").split(",") if r.strip()]
+                        if "admin" in roles:
+                            return True
+
+        # Check 2: Direct session cookie on port 7558
+        sess_token = cookies.get("agent_session")
+        if sess_token and sess_token in ACTIVE_ADMIN_SESSIONS:
+            sess_data = ACTIVE_ADMIN_SESSIONS[sess_token]
+            if sess_data.get("expires", 0) > time.time():
+                return True
+            else:
+                ACTIVE_ADMIN_SESSIONS.pop(sess_token, None)
+
+        return False
+
+    def send_html(self, content_str, status=200, extra_headers=None):
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("X-Frame-Options", "SAMEORIGIN")
+        self.send_header("Content-Security-Policy", "frame-ancestors 'self' http://*:3000 https://*:3000")
+        if extra_headers:
+            for hk, hv in extra_headers.items():
+                self.send_header(hk, hv)
+        self.end_headers()
+        self.wfile.write(content_str.encode("utf-8"))
+
+    def send_json(self, data, status=200, extra_headers=None):
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        if extra_headers:
+            for hk, hv in extra_headers.items():
+                self.send_header(hk, hv)
+        self.end_headers()
+        self.wfile.write(json.dumps(data).encode("utf-8"))
+
     def do_GET(self):
+        if not self.is_authenticated_admin():
+            if self.path == "/" or self.path.startswith("/?"):
+                self.send_html(HTML_LOGIN_PAGE)
+            else:
+                self.send_json({"success": False, "error": "Akses ditolak: Harap login sebagai administrator terlebih dahulu."}, status=401)
+            return
+
         if self.path == "/" or self.path.startswith("/?"):
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(HTML_CONFIG_PAGE.encode("utf-8"))
+            self.send_html(HTML_CONFIG_PAGE)
         elif self.path == "/api/config":
             cfgs = get_config()
             data = {
@@ -2021,11 +2321,42 @@ class BotConfigHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length).decode("utf-8")
+        body = self.rfile.read(length).decode("utf-8") if length > 0 else ""
         try:
             req = json.loads(body)
         except Exception:
             req = {}
+
+        # Public authentication endpoints
+        if self.path == "/api/login":
+            username = req.get("username", "").strip()
+            password = req.get("password", "").strip()
+            ok, msg = verify_admin_login(username, password)
+            if ok:
+                token = secrets.token_hex(32)
+                ACTIVE_ADMIN_SESSIONS[token] = {
+                    "username": username,
+                    "expires": time.time() + 86400  # 24 hours
+                }
+                cookie_val = f"agent_session={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400"
+                self.send_json({"success": True, "message": "Login berhasil"}, extra_headers={"Set-Cookie": cookie_val})
+            else:
+                self.send_json({"success": False, "message": msg}, status=401)
+            return
+
+        elif self.path == "/api/logout":
+            cookies = self.parse_cookies()
+            tok = cookies.get("agent_session")
+            if tok in ACTIVE_ADMIN_SESSIONS:
+                ACTIVE_ADMIN_SESSIONS.pop(tok, None)
+            cookie_val = "agent_session=deleted; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT"
+            self.send_json({"success": True, "message": "Logout berhasil"}, extra_headers={"Set-Cookie": cookie_val})
+            return
+
+        # Check authentication for all protected endpoints
+        if not self.is_authenticated_admin():
+            self.send_json({"success": False, "error": "Akses ditolak: Harap login sebagai administrator terlebih dahulu."}, status=401)
+            return
 
         if self.path == "/api/config":
             db = get_db()
@@ -2047,7 +2378,6 @@ class BotConfigHandler(BaseHTTPRequestHandler):
             for k, v in configs_to_save.items():
                 db.config.update_one({"_id": k}, {"$set": {"value": v}}, upsert=True)
 
-            # Notifikasi reload ke service WhatsApp
             try:
                 requests.post("http://127.0.0.1:7559/reload_admins", timeout=1.0)
             except Exception:
@@ -2136,12 +2466,6 @@ class BotConfigHandler(BaseHTTPRequestHandler):
         else:
             self.send_response(404)
             self.end_headers()
-
-    def send_json(self, data):
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        self.wfile.write(json.dumps(data).encode("utf-8"))
 
     def log_message(self, *args):
         pass
