@@ -1893,6 +1893,12 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
     if (window.self !== window.top) {
       document.body.classList.add('in-iframe');
     }
+    function botFetch(url, options) {
+      const prefix = window.location.pathname.startsWith('/bot-proxy') ? '/bot-proxy' : '';
+      const fullUrl = url.startsWith('/') ? prefix + url : prefix + '/' + url;
+      return fetch(fullUrl, options);
+    }
+    window.botFetch = botFetch;
     document.getElementById('backToAcs').href = window.location.protocol + '//' + window.location.hostname + ':3000';
 
     function switchTab(tabId) {
@@ -1928,7 +1934,7 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
         btn.disabled = true;
       }
       try {
-        const res = await fetch('/api/system/update_status');
+        const res = await botFetch('/api/system/update_status');
         const data = await res.json();
         if (!data.success) {
           showAlert('❌ ' + (data.error || 'Gagal memeriksa update'), false);
@@ -1988,7 +1994,7 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
       progressText.textContent = 'Mengunduh dari GitHub...';
 
       try {
-        const res = await fetch('/api/system/update_apply', { method: 'POST' });
+        const res = await botFetch('/api/system/update_apply', { method: 'POST' });
         const data = await res.json();
         if (data.logs) {
           logBox.textContent = data.logs;
@@ -2040,7 +2046,7 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
     }
 
     // Load initial config
-    fetch('/api/config')
+    botFetch('/api/config')
       .then(res => {
         if (!res.ok) throw new Error('Status: ' + res.status);
         return res.json();
@@ -2060,7 +2066,7 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
     // WhatsApp Live Status Polling
     let pollInterval = null;
     function updateWaStatus() {
-      fetch('/api/whatsapp/status')
+      botFetch('/api/whatsapp/status')
         .then(res => res.json())
         .then(data => {
           const badge = document.getElementById('waBadge');
@@ -2108,7 +2114,7 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
 
     function logoutWA() {
       if (confirm('Yakin ingin memutuskan koneksi WhatsApp bot?')) {
-        fetch('/api/whatsapp/logout', { method: 'POST' })
+        botFetch('/api/whatsapp/logout', { method: 'POST' })
           .then(res => res.json())
           .then(d => {
             showAlert('Sesi WhatsApp berhasil diputus', true);
@@ -2127,7 +2133,7 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
           btn.disabled = true;
           btn.textContent = '⏳ Menghapus sesi WhatsApp...';
         }
-        fetch('/api/whatsapp/reset', { method: 'POST' })
+        botFetch('/api/whatsapp/reset', { method: 'POST' })
           .then(res => res.json())
           .then(d => {
             showAlert('✅ ' + (d.message || 'Sesi WhatsApp berhasil dihapus. Silakan tunggu QR Code baru.'), true);
@@ -2158,7 +2164,7 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
         wa_admin_numbers: document.getElementById('wa_admin_numbers').value
       };
 
-      fetch('/api/config', {
+      botFetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -2210,7 +2216,7 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
     async function handleAdminLogout() {
       if (confirm("Apakah Anda yakin ingin logout dari halaman pengaturan Bot?")) {
         try {
-          await fetch('/api/logout', { method: 'POST' });
+          await botFetch('/api/logout', { method: 'POST' });
         } catch (_) {}
         window.location.reload();
       }
@@ -2343,6 +2349,12 @@ HTML_LOGIN_PAGE = """<!DOCTYPE html>
   </div>
 
   <script>
+    function botFetch(url, options) {
+      const prefix = window.location.pathname.startsWith('/bot-proxy') ? '/bot-proxy' : '';
+      const fullUrl = url.startsWith('/') ? prefix + url : prefix + '/' + url;
+      return fetch(fullUrl, options);
+    }
+
     async function handleLogin(e) {
       e.preventDefault();
       const u = document.getElementById('username').value.trim();
@@ -2355,7 +2367,7 @@ HTML_LOGIN_PAGE = """<!DOCTYPE html>
       btn.textContent = 'Memverifikasi...';
       
       try {
-        const res = await fetch('/api/login', {
+        const res = await botFetch('/api/login', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({username: u, password: p})
