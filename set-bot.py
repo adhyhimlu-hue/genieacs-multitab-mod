@@ -38,7 +38,34 @@ def mask_val(v):
         return "***"
     return v[:4] + "..." + v[-4:]
 
+def reset_whatsapp_session():
+    print("\n🗑️  Menghapus sesi WhatsApp...")
+    auth_dirs = [
+        "/opt/genieacs-agent/auth_info_baileys",
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "auth_info_baileys")
+    ]
+    wiped = False
+    import shutil
+    for ad in auth_dirs:
+        if os.path.exists(ad):
+            try:
+                shutil.rmtree(ad, ignore_errors=True)
+                wiped = True
+                print(f"  ✔ Folder sesi dibersihkan: {ad}")
+            except Exception as e:
+                print(f"  ⚠ Gagal menghapus {ad}: {e}")
+    try:
+        subprocess.run(["systemctl", "restart", "genieacs-whatsapp.service"], check=False)
+        print("  ✔ Layanan genieacs-whatsapp berhasil direstart.")
+        print("  ℹ Silakan buka Web UI http://IP_SERVER:7558 untuk scan QR Code baru.")
+    except Exception as e:
+        print(f"  ⚠ Gagal restart genieacs-whatsapp: {e}")
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] in ["reset-wa", "hapus-sesi", "resetwa", "reset"]:
+        reset_whatsapp_session()
+        sys.exit(0)
+
     print("\n" + "═" * 68)
     print("   🤖 ALIJAYA NET - PENGATURAN BOT TELEGRAM, WHATSAPP & AI GENIEACS")
     print("   Kontak / WA: 081947215703")
@@ -97,6 +124,7 @@ def main():
         new_gemini = input(f"4. Masukkan Gemini API Key [{mask_val(curr_gemini)}]: ").strip().strip("'\"")
         new_brand = input(f"5. Masukkan Nama Brand/Usaha [{curr_brand}]: ").strip().strip("'\"")
         new_phone = input(f"6. Masukkan No. WhatsApp/CS [{curr_phone}]: ").strip().strip("'\"")
+        reset_wa = input("7. Hapus sesi login WhatsApp (Ganti nomor bot / buat QR baru)? (y/N) [N]: ").strip().lower()
     except (KeyboardInterrupt, EOFError):
         print("\n\nOperasi dibatalkan.")
         sys.exit(0)
@@ -124,6 +152,9 @@ def main():
     if new_phone:
         db.config.update_one({"_id": "agent.brand.phone"}, {"$set": {"value": f'"{new_phone}"'}}, upsert=True)
         print("  ✔ Nomor WhatsApp/CS berhasil diperbarui.")
+
+    if reset_wa == 'y':
+        reset_whatsapp_session()
 
     # Pastikan agent.enabled bernilai true
     db.config.update_one({"_id": "agent.enabled"}, {"$set": {"value": "true"}}, upsert=True)

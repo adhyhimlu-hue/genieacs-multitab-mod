@@ -203,17 +203,21 @@ Anda tidak perlu lagi membuka terminal SSH! Cukup buka browser:
 * **Akses Form Web**: `http://<IP-SERVER>:7558`
 * Atau dari GenieACS Web UI, klik tombol menu **🤖 Bot AI & WA** di navbar atas.
 * **Fitur Tab Web**:
-  * **Tab WhatsApp**: Menampilkan Live QR Code Baileys, tombol Logout, dan form Nomor Admin WhatsApp.
+  * **Tab WhatsApp**: Menampilkan Live QR Code Baileys, status koneksi, form Nomor Admin WhatsApp, serta tombol **🗑️ Hapus Sesi WhatsApp (Ganti Nomor Bot / Buat QR Baru)** untuk mereset dan mengganti nomor bot WhatsApp baru secara instan.
   * **Tab Telegram**: Form Token Bot, Admin Chat ID, dan tombol Tes Kirim.
   * **Tab Brand & AI**: Nama Usaha, Nomor CS/WA Bantuan, dan Gemini API Key.
   * Tombol **💾 Simpan Semua Pengaturan**: Langsung tersimpan ke MongoDB & aktif seketika.
 
 #### CARA 2 (Melalui Terminal SSH):
-Cukup jalankan satu perintah ini di terminal server:
+Cukup jalankan perintah ini di terminal server:
 ```bash
+# Mode wizard interaktif (termasuk opsi reset sesi WA):
 set-bot
+
+# Atau langsung hapus sesi WhatsApp untuk ganti nomor bot / reset QR baru:
+set-bot reset-wa
 ```
-Ikuti panduan interaktif di layar untuk mengisi Token Telegram, Chat ID, Nomor Admin WhatsApp, Brand, dan Nomor CS.
+Ikuti panduan interaktif di layar untuk mengisi Token Telegram, Chat ID, Nomor Admin WhatsApp, Brand, Nomor CS, atau reset sesi WhatsApp.
 
 #### CARA 3 (Melalui Menu Admin ➔ Config GenieACS):
 1. Masuk ke Web UI GenieACS ➔ menu **Admin** ➔ **Config** (`http://<IP-SERVER>:3000/#!/admin/config`).

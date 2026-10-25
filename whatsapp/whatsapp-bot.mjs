@@ -720,7 +720,10 @@ export async function logoutWhatsApp() {
   try {
     if (currentSock) {
       try {
-        await currentSock.logout();
+        await Promise.race([
+          currentSock.logout(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Logout timeout')), 2500))
+        ]);
       } catch (_) {}
       try {
         currentSock.end();
@@ -765,10 +768,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (pathname === '/logout' && req.method === 'POST') {
+  if ((pathname === '/logout' || pathname === '/reset') && req.method === 'POST') {
+    console.log('[WA] Permintaan reset / hapus sesi WhatsApp diterima...');
     const success = await logoutWhatsApp();
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success }));
+    res.end(JSON.stringify({ success, message: 'Sesi WhatsApp berhasil dihapus dan bot direset' }));
     return;
   }
 

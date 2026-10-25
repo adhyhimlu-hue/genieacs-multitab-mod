@@ -4,6 +4,9 @@
 # Pengembang: ALIJAYA NET (WhatsApp: 081947215703)
 # ==============================================================================
 
+import os
+import sys
+import shutil
 import time
 import json
 import logging
@@ -1319,6 +1322,25 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
     .btn-test:hover { background: #475569; }
     .btn-logout { background: #7f1d1d; color: #fca5a5; border: 1px solid #ef4444; padding: 6px 14px; font-size: 0.85rem; border-radius: 6px; margin-top: 10px; display: inline-flex; }
     .btn-logout:hover { background: #991b1b; color: #fff; }
+    .btn-reset-wa {
+      background: #7f1d1d;
+      color: #fca5a5;
+      border: 1px solid #ef4444;
+      padding: 9px 18px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+    .btn-reset-wa:hover {
+      background: #991b1b;
+      color: #fff;
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+    }
 
     .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 0.9rem; display: none; }
     .alert-success { background: rgba(16, 185, 129, 0.2); border: 1px solid var(--success); color: #34d399; }
@@ -1363,6 +1385,15 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
 
           <div id="waOfflineBox" style="display: none;">
             <p style="color: #f87171; font-size: 0.88rem;">⚠️ Service WhatsApp belum aktif di port 7559.<br>Pastikan daemon <code>genieacs-whatsapp.service</code> sedang berjalan.</p>
+          </div>
+
+          <div class="session-actions" style="margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px; text-align: center;">
+            <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 8px;">
+              Ingin mengganti nomor bot WhatsApp baru atau membuat ulang QR Code?
+            </p>
+            <button type="button" class="btn-reset-wa" onclick="resetWA()">
+              🗑️ Hapus Sesi WhatsApp (Ganti Nomor Bot / Buat QR Baru)
+            </button>
           </div>
         </div>
 
@@ -1529,15 +1560,25 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
     pollWhatsAppStatus();
     setInterval(pollWhatsAppStatus, 3000);
 
-    function logoutWA() {
-      if (!confirm('Yakin ingin memutuskan koneksi sesi WhatsApp ini?')) return;
-      fetch('/api/whatsapp/logout', { method: 'POST' })
+    function resetWA() {
+      if (!confirm('Apakah Anda yakin ingin MENGHAPUS SESI WHATSAPP?\n\nData sesi login lama akan dihapus bersih agar Anda dapat mengganti nomor WhatsApp bot baru.\nQR Code baru akan otomatis dibuat setelah sesi dihapus.')) {
+        return;
+      }
+      const badge = document.getElementById('waBadge');
+      badge.className = 'badge badge-connecting';
+      badge.textContent = 'MENGHAPUS SESI & RESET... ⏳';
+
+      fetch('/api/whatsapp/reset', { method: 'POST' })
         .then(r => r.json())
         .then(res => {
-          showAlert('Sesi WhatsApp berhasil diputus. Silakan tunggu QR Code baru muncul.', true);
-          pollWhatsAppStatus();
+          showAlert('✅ Sesi WhatsApp lama berhasil dihapus! Menyiapkan QR Code baru...', true);
+          setTimeout(pollWhatsAppStatus, 1500);
         })
-        .catch(err => showAlert('Gagal logout: ' + err.message, false));
+        .catch(err => showAlert('❌ Gagal menghapus sesi: ' + err.message, false));
+    }
+
+    function logoutWA() {
+      resetWA();
     }
 
     // Save Form Handler
@@ -1679,12 +1720,31 @@ class BotConfigHandler(BaseHTTPRequestHandler):
             logger.info("Konfigurasi bot berhasil disimpan melalui Web UI (Port 7558)!")
             self.send_json({"success": True, "message": "Konfigurasi berhasil disimpan"})
 
-        elif self.path == "/api/whatsapp/logout":
+        elif self.path in ["/api/whatsapp/logout", "/api/whatsapp/reset"]:
             try:
-                r = requests.post("http://127.0.0.1:7559/logout", timeout=5.0)
-                self.send_json(r.json())
-            except Exception as e:
-                self.send_json({"success": False, "error": str(e)})
+                requests.post("http://127.0.0.1:7559/logout", timeout=4.0)
+            except Exception:
+                pass
+
+            auth_dirs = [
+                "/opt/genieacs-agent/auth_info_baileys",
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), "auth_info_baileys")
+            ]
+            for ad in auth_dirs:
+                if os.path.exists(ad):
+                    try:
+                        import shutil
+                        shutil.rmtree(ad, ignore_errors=True)
+                    except Exception:
+                        pass
+
+            try:
+                import subprocess
+                subprocess.run(["systemctl", "restart", "genieacs-whatsapp.service"], check=False)
+            except Exception:
+                pass
+
+            self.send_json({"success": True, "message": "Sesi WhatsApp berhasil dihapus dan bot direset"})
 
         elif self.path == "/api/agent_command":
             text = req.get("text", "")
