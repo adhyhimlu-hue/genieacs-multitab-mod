@@ -141,19 +141,40 @@ Repositori ini sudah dilengkapi modul **Asisten AI Telegram** yang otomatis terp
 
 ### 🛠️ Fitur Asisten AI Telegram:
 1. **Menu Tombol Cepat Interaktif**:
-   * Cukup ketik `/menu` atau `/start`, bot akan menampilkan tombol cepat interaktif (Cek Redaman, Add WAN, Ganti WiFi, Reboot, dsb).
-2. **Cek Redaman & Status Lengkap**:
-   * Ketik: `/cek <username_pppoe>` *(contoh: `/cek cucimotor`)*
-   * Atau bahasa santai: _"Cek redaman pelanggan cucimotor dong"_
-   * Menampilkan Redaman RX Power (dBm), Suhu, IP WAN, Uptime, Status Online/Offline, dan jumlah user terhubung.
-3. **Tambah WAN / Buat Koneksi PPPoE Jarak Jauh**:
-   * Ketik: `/addwan <username_pppoe> <user_baru> <pass_baru>` *(contoh: `/addwan cucimotor pppoe_budi rahasia123`)*
-4. **Ganti SSID & Password WiFi Seketika**:
-   * Ketik: `/wifi <username_pppoe> <ssid_baru> <password_baru>`
-   * Atau: `/ssid <username_pppoe> <ssid_baru>` & `/pass <username_pppoe> <pass_baru>`
-   * Atau bahasa santai: _"Ganti wifi budi01 jadi ALIJAYA-BUDI sandinya 12345678"_
-5. **Restart / Reboot Modem Jarak Jauh**:
-   * Ketik: `/reboot <username_pppoe>` *(contoh: `/reboot warnet_oki`)*
+   * Cukup ketik /menu atau /start, bot menampilkan keyboard interaktif cepat (Cek Modem, Redaman Kritis, Klien WiFi, ONT Baru, Add WAN, Reboot, Ubah WiFi, Status STB).
+2. **Cek Identitas Pelanggan & Redaman Super Jelas**:
+   * Ketik: /cek <username_pppoe_atau_sn> *(contoh: /cek cucimotor)*
+   * Menampilkan header identitas pelanggan yang sangat jelas (**👤 PELANGGAN : CUCIMOTOR**), Status Online/Offline, Redaman RX Power (dBm) + Indikator Kualitas (Sangat Bagus 🟢 / Normal 🟡 / Kritis 🔴), Suhu, IP WAN, Uptime, WiFi SSID, Sandi, User Terkoneksi, Tipe Hardware, SN, dan MAC Address.
+   * Dilengkapi tombol inline: **Reboot**, **Refresh Data**, **Cek Klien HP**, **Set WAN PPPoE**, **Ganti SSID**, **Ganti Sandi**, **On/Off WiFi**, dan **Factory Reset**.
+3. **Audit Massal Redaman Kritis / Drop**:
+   * Ketik: /redaman atau /los
+   * Menampilkan rangkuman seluruh modem pelanggan yang redamannya buruk (< -26 dBm atau -28 dBm) diurutkan dari yang paling kritis untuk memudahkan inspeksi teknisi lapangan.
+4. **Deteksi Modem Baru Belum Disetting (Unconfigured ONT)**:
+   * Ketik: /ontbaru
+   * Menampilkan daftar ONT yang baru dicolok ke OLT/server yang belum memiliki akun PPPoE, lengkap dengan SN dan format cepat /addwan.
+5. **Cek Daftar Klien WiFi Terkoneksi (Associated Devices / Hosts)**:
+   * Ketik: /klien <username_pppoe> *(contoh: /klien umikulsum)*
+   * Menampilkan daftar detail HP/laptop yang sedang terhubung ke WiFi modem (Nama Device, IP Lokal, MAC Address, dan status aktif).
+6. **Tambah / Set WAN PPPoE Jarak Jauh**:
+   * Ketik: /addwan <sn_atau_user> <user_pppoe> <pass_pppoe> [vlan_id]
+7. **Matikan / Hidupkan Radio Pemancar WiFi Jarak Jauh**:
+   * Ketik: /wifioff <username_pppoe> *(matikan pemancar WiFi)*
+   * Ketik: /wifion <username_pppoe> *(hidupkan pemancar WiFi)*
+8. **Ganti SSID & Sandi WiFi**:
+   * Ketik: /wifi <username> <ssid> <sandi>
+   * Atau ganti terpisah: /ssid <user> <nama_baru> & /pass <user> <sandi_baru>
+9. **Tes Diagnostik Ping TR-069**:
+   * Ketik: /ping <username_pppoe> [host] *(contoh: /ping cucimotor 8.8.8.8)*
+10. **Ganti Sandi SuperAdmin Web ONT Jarak Jauh**:
+    * Ketik: /superadmin <username_pppoe> <sandi_baru>
+11. **Restart & Factory Reset Jarak Jauh**:
+    * Ketik: /reboot <username_pppoe>
+    * Ketik: /factoryreset <username_pppoe> *(dilengkapi tombol konfirmasi Ya/Batal agar aman dari salah pencet)*
+12. **Background Watchdog & Proactive Auto-Alerts**:
+    * **Notifikasi Otomatis ONT Baru**: Bot otomatis memberi tahu admin saat ada ONT baru dicolok ke jaringan tanpa PPPoE.
+    * **Notifikasi Otomatis Redaman Drop**: Bot otomatis memberi tahu jika ada modem yang redamannya drop kritis (< -28 dBm).
+13. **Dukungan Multi-Admin & Grup Telegram**:
+    * Konfigurasi gent.telegram.adminChatId mendukung beberapa Chat ID sekaligus dipisah koma (contoh: 12345678, -100987654321) sehingga bisa digunakan di chat pribadi teknisi maupun Grup Telegram Tim.
 
 ### ⚙️ Cara Konfigurasi Token & Akun Bot Telegram:
 
