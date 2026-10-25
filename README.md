@@ -150,12 +150,15 @@ Repositori ini kini dilengkapi modul **Dual Bot AI Agent (Telegram & WhatsApp Ba
 3. **Penyimpanan Pemetaan LID Otomatis (`waLidStore`)**:
    * Menangani sistem WhatsApp Multi-Device yang kerap mengirim pesan dengan akhiran `@lid` alih-alih `@s.whatsapp.net`.
    * Otomatis memetakan `@lid` ke nomor asli dan nama pelanggan secara real-time.
-4. **Layanan Mandiri Pelanggan (Customer Self-Service)**:
-   * Pelanggan dapat mendaftarkan nomor WhatsApp mereka dengan mengetik: `daftar <id_pppoe>`
-   * Setelah terdaftar, pelanggan dapat:
-     * Mengetik `cek` ➔ Melihat status internet, nama WiFi (SSID), sandi, dan redaman ONT mereka sendiri.
-     * Mengetik `reboot` ➔ Me-restart modem mereka dari jarak jauh secara mandiri jika internet terasa lambat.
-     * Mengetik `wifi <nama_baru> <sandi_baru>` ➔ Mengubah nama WiFi dan kata sandi mandiri.
+4. **Layanan Mandiri Pelanggan (Customer Self-Service via Tags GenieACS)**:
+   * **Integrasi Tag Nomor WA di GenieACS**: Admin cukup menambahkan tag nomor WhatsApp pelanggan di Web UI GenieACS (misal: `081947215703` atau `wa:081947215703`), atau via chat bot: `tag <username_pppoe> <nomor_wa>`.
+   * **Pendaftaran Mandiri Otomatis**: Pelanggan juga dapat mendaftar sendiri dari WhatsApp dengan mengetik: `daftar <id_pppoe>`. Sistem otomatis menempelkan tag nomor HP pelanggan ke database modem di GenieACS.
+   * **Fitur Mandiri Pelanggan (24 Jam Non-Stop)**:
+     * `cek` ➔ Melihat status internet, nama WiFi (SSID), sandi saat ini, kualitas sinyal RX, dan perangkat terkoneksi.
+     * `wifi <nama_baru> <sandi_baru>` ➔ Mengubah nama WiFi dan kata sandi sekaligus (minimal 8 karakter WPA2-PSK).
+     * `pass <sandi_baru>` ➔ Mengubah kata sandi WiFi saja.
+     * `ssid <nama_baru>` ➔ Mengubah nama WiFi saja.
+     * `reboot` ➔ Me-restart modem dari jarak jauh secara mandiri jika internet terasa lambat.
 
 ---
 
@@ -179,7 +182,10 @@ Repositori ini kini dilengkapi modul **Dual Bot AI Agent (Telegram & WhatsApp Ba
 7. **Matikan / Hidupkan Radio Pemancar WiFi**:
    * Ketik: `wifioff <user>` *(matikan pemancar WiFi)*
    * Ketik: `wifion <user>` *(hidupkan pemancar WiFi)*
-8. **Ganti SSID & Sandi WiFi**:
+8. **Tautkan / Hapus Tag WhatsApp Pelanggan (Self-Service)**:
+   * Ketik: `tag <user/sn> <nomor_wa>` *(contoh: `tag cucimotor 081234567890`)* ➔ Pelanggan bisa langsung mengontrol modemnya sendiri via WhatsApp!
+   * Ketik: `untag <user/sn> <nomor_wa>` *(contoh: `untag cucimotor 081234567890`)*
+9. **Ganti SSID & Sandi WiFi**:
    * Ketik: `wifi <username> <ssid> <sandi>`
    * Atau ganti terpisah: `ssid <user> <nama_baru>` & `pass <user> <sandi_baru>`
 9. **Tes Diagnostik Ping TR-069**:

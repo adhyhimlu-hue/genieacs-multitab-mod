@@ -622,8 +622,6 @@ export async function startWhatsAppBot() {
               if (m.key.senderLid) lidStore.set(m.key.senderLid, pppoeUser);
               if (m.key.remoteJid.endsWith('@lid')) lidStore.set(m.key.remoteJid, pppoeUser);
             }
-            await reply(`✅ *Pendaftaran Berhasil*\nNomor WhatsApp Anda telah dihubungkan ke PPPoE ID: *${pppoeUser}*.\n\nKetik *cek* untuk melihat status ONT Anda.`);
-            continue;
           }
 
           // Kirim perintah ke GenieACS Python Agent Engine

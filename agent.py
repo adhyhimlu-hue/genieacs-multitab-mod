@@ -7,6 +7,7 @@
 import os
 import sys
 import shutil
+import re
 import time
 import json
 import logging
@@ -134,6 +135,173 @@ def get_device_inline_keyboard(pppoe_user, dev_id=None, wifi_enabled=True):
 # GENIEACS CORE OPERATIONS
 # ==============================================================================
 
+
+def normalize_phone(phone_str):
+    if not phone_str:
+        return ""
+    digits = re.sub(r"\D", "", str(phone_str))
+    if digits.startswith("62"):
+        return "0" + digits[2:]
+    return digits
+
+def get_phone_variations(phone_str):
+    if not phone_str:
+        return []
+    digits = re.sub(r"\D", "", str(phone_str))
+    if len(digits) < 8:
+        return [str(phone_str).strip()]
+    if digits.startswith("62"):
+        local = "0" + digits[2:]
+        intl = digits
+    elif digits.startswith("0"):
+        local = digits
+        intl = "62" + digits[1:]
+    else:
+        local = "0" + digits
+        intl = "62" + digits
+    return list(set([local, intl, f"+{intl}", f"wa:{local}", f"wa:{intl}"]))
+
+def find_device_by_phone(phone_str):
+    if not phone_str:
+        return None
+    db = get_db()
+    if db is None:
+        return None
+    variations = get_phone_variations(phone_str)
+    digits = re.sub(r"\D", "", str(phone_str))
+    local = "0" + digits[2:] if digits.startswith("62") else digits
+
+    dev = db.devices.find_one({
+        "$or": [
+            {"_tags": {"$in": variations}},
+            {"tags": {"$in": variations}},
+            {"_tags": {"$regex": local}},
+            {"tags": {"$regex": local}}
+        ]
+    })
+    return dev
+
+def add_device_tag(dev_id, tag_str):
+    clean_tag = tag_str.strip()
+    db = get_db()
+    if db is not None:
+        try:
+            db.devices.update_one({"_id": dev_id}, {"$addToSet": {"_tags": clean_tag}})
+        except Exception:
+            pass
+    try:
+        url = f"{NBI_URL}/devices/{quote(dev_id)}/tags/{quote(clean_tag)}"
+        r = requests.post(url, timeout=5)
+        return r.status_code == 200
+    except Exception:
+        return False
+
+def remove_device_tag(dev_id, tag_str):
+    clean_tag = tag_str.strip()
+    db = get_db()
+    if db is not None:
+        try:
+            db.devices.update_one({"_id": dev_id}, {"$pull": {"_tags": clean_tag}})
+        except Exception:
+            pass
+    try:
+        url = f"{NBI_URL}/devices/{quote(dev_id)}/tags/{quote(clean_tag)}"
+        r = requests.delete(url, timeout=5)
+        return r.status_code == 200
+    except Exception:
+        return False
+
+def get_device_pppoe_username(dev):
+    if not dev:
+        return "Unknown"
+    vp = dev.get("VirtualParameters", {})
+    pppoe = vp.get("pppoeUsername", {}).get("_value")
+    if pppoe and pppoe not in ["0", "undefined", "null"]:
+        return str(pppoe).strip()
+    wandev = dev.get("InternetGatewayDevice", {}).get("WANDevice", {})
+    for wk in wandev:
+        if wk.startswith("_"): continue
+        wcds = wandev[wk].get("WANConnectionDevice", {})
+        for ck in wcds:
+            if ck.startswith("_"): continue
+            ppps = wcds[ck].get("WANPPPConnection", {})
+            for pk in ppps:
+                if pk.startswith("_"): continue
+                u = ppps[pk].get("Username", {}).get("_value")
+                if u:
+                    return str(u).strip()
+    return dev.get("_deviceId", {}).get("_SerialNumber") or dev.get("_id", "Unknown")
+
+def get_customer_friendly_summary(dev):
+    if not dev:
+        return "❌ Perangkat Anda tidak ditemukan."
+    vp = dev.get("VirtualParameters", {})
+    igd = dev.get("InternetGatewayDevice", {})
+    
+    pppoe = get_device_pppoe_username(dev)
+    
+    # Redaman
+    rx = vp.get("RXPower", {}).get("_value") or "-"
+    rx_badge = ""
+    if rx != "-":
+        try:
+            rx_val = float(str(rx).replace("dBm", "").strip())
+            if rx_val >= -24.0:
+                rx_badge = "(Sinyal Bagus 🟢)"
+            elif rx_val >= -27.0:
+                rx_badge = "(Normal 🟡)"
+            else:
+                rx_badge = "(Lemah / Redaman Tinggi 🔴)"
+        except Exception:
+            pass
+        if not str(rx).endswith("dBm"):
+            rx = f"{rx} dBm"
+
+    uptime = vp.get("getdeviceuptime", {}).get("_value") or vp.get("uptimeDevice", {}).get("_value") or "-"
+    
+    wlan1 = igd.get("LANDevice", {}).get("1", {}).get("WLANConfiguration", {}).get("1", {})
+    ssid = wlan1.get("SSID", {}).get("_value") or vp.get("WlanSSID", {}).get("_value") or "-"
+    wifi_pass = (
+        wlan1.get("KeyPassphrase", {}).get("_value") or
+        wlan1.get("PreSharedKey", {}).get("1", {}).get("KeyPassphrase", {}).get("_value") or
+        vp.get("WlanPassword", {}).get("_value") or
+        "(Tersimpan di Modem)"
+    )
+    
+    clients = (
+        wlan1.get("TotalAssociations", {}).get("_value") or
+        vp.get("activedevices", {}).get("_value") or
+        "0"
+    )
+    
+    last_inform = dev.get("_lastInform")
+    online_str = "Offline 🔴"
+    if last_inform:
+        diff_sec = (time.time() - last_inform.timestamp())
+        if diff_sec < 600:
+            online_str = "Online (Normal) 🟢"
+        else:
+            online_str = f"Offline ({int(diff_sec//60)} mnt lalu) 🔴"
+
+    return (
+        f"┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n"
+        f"  📶 *STATUS LAYANAN WIFI ANDA*\n"
+        f"┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n"
+        f"• *ID Pelanggan*   : `{pppoe}`\n"
+        f"• *Status Koneksi* : {online_str}\n"
+        f"• *Nama WiFi (SSID)*: `{ssid}`\n"
+        f"• *Kata Sandi*     : `{wifi_pass}`\n"
+        f"• *Kualitas Sinyal*: `{rx}` {rx_badge}\n"
+        f"• *Perangkat Konek*: `{clients} HP/Laptop`\n"
+        f"• *Waktu Aktif*    : `{uptime}`\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"💡 *Perintah Mandiri:*\n"
+        f"• `wifi <nama_baru> <sandi_baru>` ➔ Ganti nama & sandi\n"
+        f"• `pass <sandi_baru>` ➔ Ganti sandi saja (min. 8 huruf/angka)\n"
+        f"• `ssid <nama_baru>` ➔ Ganti nama WiFi saja\n"
+        f"• `reboot` ➔ Restart modem jika koneksi berat"
+    )
+
 def find_device(query_str):
     db = get_db()
     if db is None:
@@ -143,6 +311,8 @@ def find_device(query_str):
 
     dev = db.devices.find_one({
         "$or": [
+            {"_tags": reg},
+            {"tags": reg},
             {"VirtualParameters.pppoeUsername._value": reg},
             {"InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Username._value": reg},
             {"InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANPPPConnection.1.Username._value": reg},
@@ -918,6 +1088,16 @@ def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_ke
     cmd = parts[0].lower() if parts else ""
     rest = parts[1].strip() if len(parts) > 1 else ""
 
+    # 0. Resolusi Modem Pelanggan dari Tag Nomor WhatsApp Pengirim
+    customer_dev = None
+    if not is_admin:
+        if registered_tag:
+            customer_dev = find_device(registered_tag)
+        if not customer_dev and sender_id:
+            customer_dev = find_device_by_phone(sender_id)
+            if customer_dev:
+                registered_tag = customer_dev.get("_id")
+
     # 1. Menu & Help
     if cmd in ["menu", "start", "bantuan", "help"]:
         if is_admin:
@@ -938,23 +1118,38 @@ def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_ke
                 "• `superadmin <user> <sandi>` ➔ Ubah sandi web ONT\n"
                 "• `ping <user> [host]` ➔ Uji ping TR-069 jarak jauh\n"
                 "• `factoryreset <user>` ➔ Reset setelan pabrik\n"
-                "• `server` / `status` ➔ Status CPU, RAM, Suhu STB\n"
+                "• `tag <user> <wa>` ➔ Tautkan nomor WA pelanggan ke modem\n• `untag <user> <wa>` ➔ Hapus nomor WA pelanggan dari modem\n• `server` / `status` ➔ Status CPU, RAM, Suhu STB\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
                 f"👑 *CS: {BRAND_NAME} ({BRAND_PHONE})*"
             )
             return (menu_text, get_main_menu_keyboard())
         else:
-            cust_menu = (
-                f"👋 *Halo! Selamat Datang di Layanan Mandiri {BRAND_NAME}*\n"
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                "Fitur yang dapat Anda gunakan:\n"
-                "• `cek` ➔ Cek status koneksi, SSID & redaman WiFi Anda\n"
-                "• `reboot` ➔ Restart modem Anda secara mandiri jika internet lambat\n"
-                "• `wifi <nama_baru> <sandi_baru>` ➔ Ubah nama WiFi & kata sandi\n"
-                "• `daftar <id_pelanggan>` ➔ Hubungkan nomor WA ini ke ID internet Anda\n"
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                f"📞 *Butuh Bantuan Teknisi?* Hubungi CS di {BRAND_PHONE}"
-            )
+            if customer_dev:
+                pppoe_user = get_device_pppoe_username(customer_dev)
+                cust_menu = (
+                    f"👋 *Halo! Layanan Mandiri WiFi {BRAND_NAME}*\n"
+                    f"Modem Terdeteksi: *{pppoe_user}*\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n"
+                    "Fitur yang dapat Anda gunakan:\n"
+                    "• `cek` ➔ Cek nama WiFi, kata sandi & status sinyal\n"
+                    "• `wifi <nama_baru> <sandi_baru>` ➔ Ganti nama WiFi & sandi sekaligus\n"
+                    "• `pass <sandi_baru>` ➔ Ganti sandi WiFi saja (min. 8 karakter)\n"
+                    "• `ssid <nama_baru>` ➔ Ganti nama WiFi saja\n"
+                    "• `reboot` ➔ Restart modem jika koneksi internet terasa lambat\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n"
+                    f"📞 *Butuh Bantuan Teknisi?* Hubungi CS di {BRAND_PHONE}"
+                )
+            else:
+                clean_s = normalize_phone(sender_id)
+                cust_menu = (
+                    f"👋 *Halo! Selamat Datang di Layanan Otomatis {BRAND_NAME}*\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n"
+                    f"Nomor WhatsApp Anda (*{clean_s or sender_id}*) belum terdaftar pada modem mana pun.\n\n"
+                    "📝 *Cara Menghubungkan:*\n"
+                    "Ketik: `daftar <id_pppoe>`\n"
+                    "_Contoh:_ `daftar cucimotor`\n\n"
+                    f"Atau hubungi Layanan Bantuan / CS di {BRAND_PHONE}."
+                )
             return (cust_menu, None)
 
     # 2. Cek Redaman Kritis
@@ -980,18 +1175,21 @@ def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_ke
         if not target and registered_tag:
             target = registered_tag
 
+        if not is_admin:
+            dev_target = customer_dev or (find_device(target) if target else None)
+            if not dev_target:
+                return ("⚠️ Nomor WhatsApp Anda belum terhubung ke modem. Ketik `daftar <id_pppoe>` terlebih dahulu.", None)
+            return (get_customer_friendly_summary(dev_target), None)
+
         if not target:
-            if is_admin:
-                return ("⚠️ Silakan sertakan Username PPPoE atau Serial Number.\n_Contoh:_ `cek cucimotor`", None)
-            else:
-                return ("⚠️ Nomor Anda belum terhubung ke ID Pelanggan. Silakan ketik `daftar <id_pppoe>` terlebih dahulu.", None)
+            return ("⚠️ Silakan sertakan Username PPPoE atau Serial Number.\n_Contoh:_ `cek cucimotor`", None)
 
         dev = find_device(target)
         if not dev:
             return (f"❌ Modem `{target}` tidak ditemukan di database GenieACS.", None)
 
         summary_text, pppoe_user, dev_id, wifi_on = get_device_summary(dev)
-        kb = get_device_inline_keyboard(pppoe_user, dev_id, wifi_on) if is_admin else None
+        kb = get_device_inline_keyboard(pppoe_user, dev_id, wifi_on)
         return (summary_text, kb)
 
     # 6. Klien WiFi Terhubung
@@ -1013,6 +1211,14 @@ def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_ke
         if not dev:
             return (f"❌ Modem `{target}` tidak ditemukan.", None)
         ok, msg = reboot_device_task(dev)
+        if not is_admin and ok:
+            p_name = get_device_pppoe_username(dev)
+            return (
+                f"🔄 *Perintah Restart Terkirim!*\n"
+                f"Modem Anda (*{p_name}*) sedang memulai ulang (reboot).\n"
+                f"Mohon tunggu sekitar 1-2 menit hingga lampu PON/Internet menyala stabil kembali.",
+                None
+            )
         return (f"{'✅' if ok else '❌'} {msg}", None)
 
     # 8. WiFi ON / OFF
@@ -1052,14 +1258,24 @@ def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_ke
             if ok:
                 return (f"✅ *Berhasil Mengubah Pengaturan WiFi!*\n• Pelanggan: `{target}`\n• SSID: `{new_ssid}`\n• Sandi: `{new_pass}`\nStatus: Terkirim via TR-069.", None)
             return (f"❌ Gagal: {msg}", None)
-        elif not is_admin and len(sub_parts) >= 2 and registered_tag:
+        elif not is_admin:
+            dev_target = customer_dev or (find_device(registered_tag) if registered_tag else None)
+            if not dev_target:
+                return ("⚠️ Nomor Anda belum terhubung ke modem mana pun. Ketik `daftar <id_pppoe>` terlebih dahulu.", None)
+            if len(sub_parts) < 2:
+                return ("⚠️ Format salah. Gunakan:\n`wifi <nama_wifi_baru> <sandi_baru>`\n_Contoh:_ `wifi MyHome SandiRahasia123`", None)
             new_ssid, new_pass = sub_parts[0], sub_parts[1]
-            dev = find_device(registered_tag)
-            if not dev:
-                return ("❌ Perangkat Anda tidak ditemukan di sistem.", None)
-            ok, msg = set_wifi_credentials(dev, new_ssid=new_ssid, new_password=new_pass)
+            if len(new_pass) < 8:
+                return ("⚠️ Kata sandi WiFi minimal harus 8 karakter demi keamanan WPA2-PSK.\n_Contoh:_ `wifi MyHome SandiRahasia123`", None)
+            ok, msg = set_wifi_credentials(dev_target, new_ssid=new_ssid, new_password=new_pass)
             if ok:
-                return (f"✅ *WiFi Anda Berhasil Diperbarui!*\n• Nama WiFi: *{new_ssid}*\n• Sandi: *{new_pass}*\nSilakan sambungkan ulang perangkat Anda.", None)
+                return (
+                    f"✅ *WiFi Anda Berhasil Diperbarui!*\n"
+                    f"• Nama WiFi Baru : *{new_ssid}*\n"
+                    f"• Sandi Baru : *{new_pass}*\n\n"
+                    f"Pengaturan telah dikirim ke modem. Silakan sambungkan kembali perangkat HP/Laptop Anda dengan kata sandi baru.",
+                    None
+                )
             return (f"❌ Gagal memperbarui WiFi: {msg}", None)
         else:
             if is_admin:
@@ -1069,31 +1285,69 @@ def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_ke
 
     # 10. Ubah SSID saja
     if cmd == "ssid":
-        sub_parts = rest.split(maxsplit=1)
-        if len(sub_parts) >= 2:
-            target, new_ssid = sub_parts[0], sub_parts[1]
-            dev = find_device(target)
-            if not dev:
-                return (f"❌ Modem `{target}` tidak ditemukan.", None)
-            ok, msg = set_wifi_credentials(dev, new_ssid=new_ssid)
+        if is_admin:
+            sub_parts = rest.split(maxsplit=1)
+            if len(sub_parts) >= 2:
+                target, new_ssid = sub_parts[0], sub_parts[1]
+                dev = find_device(target)
+                if not dev:
+                    return (f"❌ Modem `{target}` tidak ditemukan.", None)
+                ok, msg = set_wifi_credentials(dev, new_ssid=new_ssid)
+                if ok:
+                    return (f"✅ *Berhasil Mengubah SSID!*\n• Pelanggan: `{target}`\n• SSID Baru: `{new_ssid}`", None)
+                return (f"❌ Gagal: {msg}", None)
+            return ("⚠️ Gunakan: `ssid <username_pppoe> <nama_baru>`", None)
+        else:
+            dev_target = customer_dev or (find_device(registered_tag) if registered_tag else None)
+            if not dev_target:
+                return ("⚠️ Nomor Anda belum terhubung ke modem mana pun. Ketik `daftar <id_pppoe>` terlebih dahulu.", None)
+            if not rest:
+                return ("⚠️ Format salah. Gunakan:\n`ssid <nama_wifi_baru>`\n_Contoh:_ `ssid MyHome-WiFi`", None)
+            new_ssid = rest.strip()
+            ok, msg = set_wifi_credentials(dev_target, new_ssid=new_ssid)
             if ok:
-                return (f"✅ *Berhasil Mengubah SSID!*\n• Pelanggan: `{target}`\n• SSID Baru: `{new_ssid}`", None)
-            return (f"❌ Gagal: {msg}", None)
-        return ("⚠️ Gunakan: `ssid <username_pppoe> <nama_baru>`", None)
+                return (
+                    f"✅ *Nama WiFi Berhasil Diubah!*\n"
+                    f"• Nama WiFi Baru : *{new_ssid}*\n\n"
+                    f"Pengaturan telah dikirim ke modem. Silakan sambungkan kembali perangkat HP Anda.",
+                    None
+                )
+            return (f"❌ Gagal mengubah nama WiFi: {msg}", None)
 
     # 11. Ubah Password saja
-    if cmd == "pass":
-        sub_parts = rest.split(maxsplit=1)
-        if len(sub_parts) >= 2:
-            target, new_pass = sub_parts[0], sub_parts[1]
-            dev = find_device(target)
-            if not dev:
-                return (f"❌ Modem `{target}` tidak ditemukan.", None)
-            ok, msg = set_wifi_credentials(dev, new_password=new_pass)
+    if cmd in ["pass", "password", "sandi"]:
+        if is_admin:
+            sub_parts = rest.split(maxsplit=1)
+            if len(sub_parts) >= 2:
+                target, new_pass = sub_parts[0], sub_parts[1]
+                if len(new_pass) < 8:
+                    return ("⚠️ Kata sandi minimal 8 karakter.", None)
+                dev = find_device(target)
+                if not dev:
+                    return (f"❌ Modem `{target}` tidak ditemukan.", None)
+                ok, msg = set_wifi_credentials(dev, new_password=new_pass)
+                if ok:
+                    return (f"✅ *Berhasil Mengubah Sandi WiFi!*\n• Pelanggan: `{target}`\n• Sandi Baru: `{new_pass}`", None)
+                return (f"❌ Gagal: {msg}", None)
+            return ("⚠️ Gunakan: `pass <username_pppoe> <sandi_baru>`", None)
+        else:
+            dev_target = customer_dev or (find_device(registered_tag) if registered_tag else None)
+            if not dev_target:
+                return ("⚠️ Nomor Anda belum terhubung ke modem mana pun. Ketik `daftar <id_pppoe>` terlebih dahulu.", None)
+            if not rest:
+                return ("⚠️ Format salah. Gunakan:\n`pass <sandi_baru>`\n_Contoh:_ `pass SandiRahasia123`", None)
+            new_pass = rest.split()[0].strip()
+            if len(new_pass) < 8:
+                return ("⚠️ Kata sandi minimal harus 8 karakter demi keamanan WPA2-PSK.\n_Contoh:_ `pass SandiRahasia123`", None)
+            ok, msg = set_wifi_credentials(dev_target, new_password=new_pass)
             if ok:
-                return (f"✅ *Berhasil Mengubah Sandi WiFi!*\n• Pelanggan: `{target}`\n• Sandi Baru: `{new_pass}`", None)
-            return (f"❌ Gagal: {msg}", None)
-        return ("⚠️ Gunakan: `pass <username_pppoe> <sandi_baru>`", None)
+                return (
+                    f"✅ *Kata Sandi WiFi Berhasil Diubah!*\n"
+                    f"• Kata Sandi Baru : *{new_pass}*\n\n"
+                    f"Pengaturan telah dikirim ke modem. Silakan sambungkan kembali perangkat HP/Laptop Anda dengan kata sandi baru.",
+                    None
+                )
+            return (f"❌ Gagal mengubah kata sandi: {msg}", None)
 
     # 12. Add/Set WAN PPPoE
     if cmd == "addwan":
@@ -1151,6 +1405,69 @@ def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_ke
             ok, msg = ping_diagnostics_task(dev, host)
             return (f"{'✅' if ok else '❌'} {msg}", None)
         return ("⚠️ Gunakan: `ping <username/sn> [host]`", None)
+
+    # 15.5. Tagging Nomor WhatsApp Pelanggan (Admin)
+    if cmd == "tag":
+        if not is_admin:
+            return ("⛔ Perintah ini khusus untuk Admin.", None)
+        sub_parts = rest.split()
+        if len(sub_parts) < 2:
+            return ("⚠️ Format salah. Gunakan:\n`tag <username_pppoe/sn> <nomor_wa>`\n_Contoh:_ `tag cucimotor 081234567890`", None)
+        target_user, raw_phone = sub_parts[0], sub_parts[1]
+        dev = find_device(target_user)
+        if not dev:
+            return (f"❌ Modem `{target_user}` tidak ditemukan.", None)
+        clean_phone = normalize_phone(raw_phone)
+        if len(clean_phone) < 8:
+            return (f"⚠️ Nomor WhatsApp `{raw_phone}` tidak valid.", None)
+        add_device_tag(dev["_id"], clean_phone)
+        pppoe_name = get_device_pppoe_username(dev)
+        return (
+            f"✅ *Tag WhatsApp Berhasil Ditambahkan!*\n"
+            f"• Pelanggan : `{pppoe_name}`\n"
+            f"• Device ID : `{dev.get('_id')}`\n"
+            f"• Nomor Tag : `{clean_phone}`\n\n"
+            f"Pelanggan kini dapat langsung chat bot untuk cek status & ubah WiFi secara mandiri!",
+            None
+        )
+
+    if cmd == "untag":
+        if not is_admin:
+            return ("⛔ Perintah ini khusus untuk Admin.", None)
+        sub_parts = rest.split()
+        if len(sub_parts) < 2:
+            return ("⚠️ Format salah. Gunakan:\n`untag <username_pppoe/sn> <nomor_wa>`\n_Contoh:_ `untag cucimotor 081234567890`", None)
+        target_user, raw_phone = sub_parts[0], sub_parts[1]
+        dev = find_device(target_user)
+        if not dev:
+            return (f"❌ Modem `{target_user}` tidak ditemukan.", None)
+        clean_phone = normalize_phone(raw_phone)
+        remove_device_tag(dev["_id"], clean_phone)
+        return (f"🗑️ Tag `{clean_phone}` berhasil dihapus dari modem `{target_user}`.", None)
+
+    # 15.6. Pendaftaran Mandiri Pelanggan (Customer Self-Registration)
+    if cmd == "daftar":
+        if not rest:
+            return ("⚠️ Format salah. Gunakan:\n`daftar <id_pppoe>`\n_Contoh:_ `daftar cucimotor`", None)
+        target_user = rest.split()[0]
+        dev = find_device(target_user)
+        if not dev:
+            return (f"❌ Pelanggan `{target_user}` tidak ditemukan di sistem GenieACS. Pastikan ID PPPoE Anda benar.", None)
+        clean_phone = normalize_phone(sender_id)
+        if clean_phone and len(clean_phone) >= 8:
+            add_device_tag(dev["_id"], clean_phone)
+        pppoe_name = get_device_pppoe_username(dev)
+        return (
+            f"✅ *Pendaftaran Layanan Mandiri Berhasil!*\n"
+            f"Nomor WhatsApp Anda (*{clean_phone or sender_id}*) kini telah terhubung ke modem: *{pppoe_name}*.\n\n"
+            f"Silakan gunakan perintah mandiri berikut kapan saja:\n"
+            f"• `cek` ➔ Cek nama WiFi, kata sandi & status sinyal\n"
+            f"• `wifi <nama_baru> <sandi_baru>` ➔ Ganti nama & sandi WiFi\n"
+            f"• `pass <sandi_baru>` ➔ Ganti sandi WiFi saja (min. 8 karakter)\n"
+            f"• `ssid <nama_baru>` ➔ Ganti nama WiFi saja\n"
+            f"• `reboot` ➔ Restart modem jika koneksi lambat",
+            None
+        )
 
     # 16. Fallback Gemini AI / Percakapan Cerdas
     if gemini_key:
