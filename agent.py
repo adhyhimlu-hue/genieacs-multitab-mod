@@ -1698,6 +1698,11 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
     .back-link { display: inline-block; margin-top: 18px; text-decoration: none; color: var(--primary); font-size: 0.85rem; font-weight: 500; }
     .back-link:hover { text-decoration: underline; }
 
+    .version-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
+    @media (max-width: 600px) {
+      .version-grid { grid-template-columns: 1fr; }
+    }
+
     /* In-Iframe styling: seamlessly blend with GenieACS SPA */
     body.in-iframe { padding: 8px 12px; }
     body.in-iframe .container { max-width: 100%; border: 1px solid var(--border); box-shadow: none; background: rgba(8, 13, 34, 0.85); }
@@ -1719,6 +1724,7 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
       <button type="button" class="tab-btn active" onclick="switchTab('tab-wa')">📱 WhatsApp (Baileys)</button>
       <button type="button" class="tab-btn" onclick="switchTab('tab-tg')">✈️ Telegram Bot</button>
       <button type="button" class="tab-btn" onclick="switchTab('tab-brand')">🏢 Brand & AI</button>
+      <button type="button" class="tab-btn" onclick="switchTab('tab-update')">🔄 Sistem & Update</button>
     </div>
 
     <form id="botForm">
@@ -1817,7 +1823,63 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
         </div>
       </div>
 
-      <div class="btn-row">
+      <!-- TAB 4: SISTEM & UPDATE -->
+      <div id="tab-update" class="tab-pane">
+        <div class="status-card" style="text-align: left; padding: 20px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+            <div>
+              <span id="updateBadge" class="badge badge-open">MEMERIKSA VERSI...</span>
+              <p style="color: var(--text-muted); font-size: 0.84rem; margin-top: 4px;">Repositori: <b style="color: #00e5ff;">github.com/alijayanet/genieacs-multitab-mod</b></p>
+            </div>
+            <button type="button" id="btnCheckUpdate" class="btn-test" style="flex: 0 0 auto; padding: 8px 16px; border-radius: 6px;" onclick="checkSystemUpdate()">🔍 Cek Pembaruan</button>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px;" class="version-grid">
+            <div style="background: var(--card-inner); border: 1px solid var(--border); border-radius: 8px; padding: 14px;">
+              <span style="font-size: 0.78rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Versi Server Ini (Lokal)</span>
+              <div style="font-size: 1.15rem; font-weight: 700; color: #fff; margin-top: 4px; font-family: monospace;" id="localCommit">-</div>
+              <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 6px;" id="localDate">-</div>
+            </div>
+            <div style="background: var(--card-inner); border: 1px solid var(--border); border-radius: 8px; padding: 14px;">
+              <span style="font-size: 0.78rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Versi Terbaru (GitHub)</span>
+              <div style="font-size: 1.15rem; font-weight: 700; color: #00e5ff; margin-top: 4px; font-family: monospace;" id="remoteCommit">-</div>
+              <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 6px;" id="remoteDate">-</div>
+            </div>
+          </div>
+
+          <div id="updateNoticeBox" style="background: rgba(4, 99, 128, 0.2); border: 1px solid #00e5ff; border-radius: 8px; padding: 14px; margin-bottom: 18px; display: none;">
+            <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; color: #00e5ff; font-size: 0.95rem;">
+              ⚡ Pembaruan Baru Tersedia!
+            </div>
+            <p style="font-size: 0.85rem; color: #e2e8f0; margin-top: 6px;" id="updateNoticeMsg">-</p>
+            <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;" id="updateNoticeBehind"></p>
+          </div>
+
+          <div style="margin-top: 10px;">
+            <button type="button" id="btnApplyUpdate" class="btn-save" style="display: none; width: 100%; border-radius: 6px;" onclick="applySystemUpdate()">
+              🚀 Perbarui Sistem Sekarang (1-Click Update)
+            </button>
+          </div>
+
+          <!-- Terminal Log Box -->
+          <div id="updateLogWrapper" style="display: none; margin-top: 18px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">📋 Log Proses Update:</span>
+              <span id="updateProgressText" style="font-size: 0.78rem; color: var(--primary);">Menjalankan proses...</span>
+            </div>
+            <div id="updateLogBox" style="background: #02040a; border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-family: Consolas, 'Courier New', monospace; font-size: 0.8rem; color: #38bdf8; max-height: 200px; overflow-y: auto; white-space: pre-wrap; line-height: 1.5;"></div>
+          </div>
+        </div>
+
+        <div style="background: var(--card-inner); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-top: 14px;">
+          <h4 style="font-size: 0.88rem; color: #f8fafc; margin-bottom: 6px;">ℹ️ Informasi Pembaruan</h4>
+          <p style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.5;">
+            Fitur pembaruan ini akan secara otomatis menarik commit kode terbaru dari repositori GitHub, memperbarui modul backend & frontend GenieACS, dan me-restart service tanpa mengubah konfigurasi database MongoDB, token bot Telegram, maupun sesi WhatsApp yang sedang terhubung.
+          </p>
+        </div>
+      </div>
+
+      <div class="btn-row" id="saveBtnRow">
         <button type="submit" class="btn-save">💾 Simpan Semua Pengaturan</button>
       </div>
     </form>
@@ -1836,8 +1898,132 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
     function switchTab(tabId) {
       document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
       document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-      document.getElementById(tabId).classList.add('active');
-      event.currentTarget.classList.add('active');
+      
+      const targetPane = document.getElementById(tabId);
+      if (targetPane) targetPane.classList.add('active');
+
+      if (event && event.currentTarget && event.currentTarget.classList) {
+        event.currentTarget.classList.add('active');
+      } else {
+        const clickedBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.getAttribute('onclick')?.includes(tabId));
+        if (clickedBtn) clickedBtn.classList.add('active');
+      }
+
+      const saveRow = document.getElementById('saveBtnRow');
+      if (saveRow) {
+        saveRow.style.display = (tabId === 'tab-update') ? 'none' : 'flex';
+      }
+
+      if (tabId === 'tab-update') {
+        checkSystemUpdate(true);
+      }
+    }
+
+    async function checkSystemUpdate(silenceSuccess = false) {
+      const btn = document.getElementById('btnCheckUpdate');
+      const badge = document.getElementById('updateBadge');
+      if (btn) {
+        btn.textContent = '⏳ Memeriksa...';
+        btn.disabled = true;
+      }
+      try {
+        const res = await fetch('/api/system/update_status');
+        const data = await res.json();
+        if (!data.success) {
+          showAlert('❌ ' + (data.error || 'Gagal memeriksa update'), false);
+          return;
+        }
+
+        document.getElementById('localCommit').textContent = data.local_commit || '-';
+        document.getElementById('localDate').textContent = 'Pembaruan: ' + (data.local_date || '-');
+        document.getElementById('remoteCommit').textContent = data.remote_commit || '-';
+        document.getElementById('remoteDate').textContent = 'Rilis: ' + (data.remote_date || '-');
+
+        const btnApply = document.getElementById('btnApplyUpdate');
+        const noticeBox = document.getElementById('updateNoticeBox');
+
+        if (data.has_update) {
+          badge.className = 'badge badge-qr';
+          badge.textContent = '⚡ UPDATE TERSEDIA (' + (data.commits_behind || 1) + ' COMMIT)';
+          noticeBox.style.display = 'block';
+          document.getElementById('updateNoticeMsg').textContent = 'Pesan Rilis: ' + (data.remote_msg || '-');
+          document.getElementById('updateNoticeBehind').textContent = 'Server ini tertinggal ' + (data.commits_behind || 1) + ' pembaruan dari GitHub.';
+          btnApply.style.display = 'flex';
+        } else {
+          badge.className = 'badge badge-open';
+          badge.textContent = '✅ SUDAH VERSI TERBARU';
+          noticeBox.style.display = 'none';
+          btnApply.style.display = 'none';
+          if (!silenceSuccess) {
+            showAlert('✅ Sistem Anda sudah menggunakan versi terbaru (' + data.local_commit + ').', true);
+          }
+        }
+      } catch (err) {
+        showAlert('❌ Gagal menghubungi server: ' + err.message, false);
+      } finally {
+        if (btn) {
+          btn.textContent = '🔍 Cek Pembaruan';
+          btn.disabled = false;
+        }
+      }
+    }
+
+    async function applySystemUpdate() {
+      if (!confirm("Apakah Anda yakin ingin memperbarui sistem ke versi terbaru dari GitHub?\n\nService GenieACS akan direstart secara otomatis.")) {
+        return;
+      }
+
+      const btnApply = document.getElementById('btnApplyUpdate');
+      const logWrapper = document.getElementById('updateLogWrapper');
+      const logBox = document.getElementById('updateLogBox');
+      const progressText = document.getElementById('updateProgressText');
+
+      btnApply.disabled = true;
+      btnApply.textContent = '🚀 Sedang Memperbarui...';
+      logWrapper.style.display = 'block';
+      logBox.textContent = 'Memulai proses update...\n';
+      progressText.textContent = 'Mengunduh dari GitHub...';
+
+      try {
+        const res = await fetch('/api/system/update_apply', { method: 'POST' });
+        const data = await res.json();
+        if (data.logs) {
+          logBox.textContent = data.logs;
+        }
+        if (data.success) {
+          progressText.textContent = '✅ Berhasil!';
+          progressText.style.color = '#34d399';
+          showAlert('🎉 ' + data.message, true);
+          
+          let countdown = 6;
+          const interval = setInterval(() => {
+            countdown--;
+            progressText.textContent = `Memuat ulang halaman dalam ${countdown} detik...`;
+            if (countdown <= 0) {
+              clearInterval(interval);
+              window.location.reload();
+            }
+          }, 1000);
+        } else {
+          progressText.textContent = '❌ Gagal';
+          progressText.style.color = '#f87171';
+          showAlert('❌ Gagal update: ' + (data.error || 'Terjadi kesalahan'), false);
+          btnApply.disabled = false;
+          btnApply.textContent = '🚀 Coba Perbarui Lagi';
+        }
+      } catch (err) {
+        logBox.textContent += '\nError jaringan: ' + err.message;
+        progressText.textContent = '⚠️ Service sedang restart...';
+        let countdown = 6;
+        const interval = setInterval(() => {
+          countdown--;
+          progressText.textContent = `Service sedang restart. Memuat ulang dalam ${countdown} detik...`;
+          if (countdown <= 0) {
+            clearInterval(interval);
+            window.location.reload();
+          }
+        }, 1000);
+      }
     }
 
     function showAlert(msg, isSuccess) {
@@ -2234,6 +2420,156 @@ def verify_admin_login(username, password):
     return False, "Username atau password salah."
 
 
+
+def get_system_update_status():
+    repo_dirs = [
+        "/root/genieacs-multitab-mod",
+        "/opt/genieacs-multitab-mod",
+        os.path.dirname(os.path.abspath(__file__))
+    ]
+    repo_dir = None
+    for d in repo_dirs:
+        if os.path.exists(os.path.join(d, ".git")):
+            repo_dir = d
+            break
+
+    if not repo_dir:
+        target_dir = "/root/genieacs-multitab-mod"
+        try:
+            subprocess.run(["git", "clone", "https://github.com/alijayanet/genieacs-multitab-mod.git", target_dir], timeout=35, check=True)
+            repo_dir = target_dir
+        except Exception as e:
+            return {"success": False, "error": f"Gagal inisialisasi repositori Git: {e}"}
+
+    try:
+        local_hash = subprocess.check_output(["git", "-C", repo_dir, "rev-parse", "HEAD"], timeout=5).decode().strip()
+        local_short = local_hash[:7]
+        local_msg = subprocess.check_output(["git", "-C", repo_dir, "log", "-1", "--pretty=%s"], timeout=5).decode().strip()
+        local_date = subprocess.check_output(["git", "-C", repo_dir, "log", "-1", "--pretty=%cd", "--date=format:%Y-%m-%d %H:%M"], timeout=5).decode().strip()
+    except Exception as e:
+        return {"success": False, "error": f"Gagal membaca info commit lokal: {e}"}
+
+    remote_msg = ""
+    remote_date = ""
+    commits_behind = 0
+    try:
+        subprocess.run(["git", "-C", repo_dir, "fetch", "origin", "main"], timeout=20, check=True)
+        remote_hash = subprocess.check_output(["git", "-C", repo_dir, "rev-parse", "origin/main"], timeout=5).decode().strip()
+        remote_short = remote_hash[:7]
+        remote_msg = subprocess.check_output(["git", "-C", repo_dir, "log", "-1", "--pretty=%s", "origin/main"], timeout=5).decode().strip()
+        remote_date = subprocess.check_output(["git", "-C", repo_dir, "log", "-1", "--pretty=%cd", "--date=format:%Y-%m-%d %H:%M", "origin/main"], timeout=5).decode().strip()
+        behind_str = subprocess.check_output(["git", "-C", repo_dir, "rev-list", "--count", "HEAD..origin/main"], timeout=5).decode().strip()
+        commits_behind = int(behind_str) if behind_str.isdigit() else 0
+    except Exception:
+        try:
+            ls_out = subprocess.check_output(["git", "ls-remote", "https://github.com/alijayanet/genieacs-multitab-mod.git", "refs/heads/main"], timeout=10).decode().strip()
+            remote_hash = ls_out.split()[0] if ls_out else ""
+            remote_short = remote_hash[:7]
+        except Exception as e2:
+            return {"success": False, "error": f"Gagal memeriksa GitHub: {e2}", "local_commit": local_short, "local_msg": local_msg, "local_date": local_date}
+
+    has_update = bool(local_hash and remote_hash and local_hash != remote_hash)
+
+    return {
+        "success": True,
+        "local_commit": local_short,
+        "local_hash": local_hash,
+        "local_msg": local_msg,
+        "local_date": local_date,
+        "remote_commit": remote_short,
+        "remote_hash": remote_hash,
+        "remote_msg": remote_msg or local_msg,
+        "remote_date": remote_date or local_date,
+        "commits_behind": commits_behind,
+        "has_update": has_update
+    }
+
+
+def apply_system_update():
+    repo_dirs = [
+        "/root/genieacs-multitab-mod",
+        "/opt/genieacs-multitab-mod",
+        os.path.dirname(os.path.abspath(__file__))
+    ]
+    repo_dir = None
+    for d in repo_dirs:
+        if os.path.exists(os.path.join(d, ".git")):
+            repo_dir = d
+            break
+
+    if not repo_dir:
+        repo_dir = "/root/genieacs-multitab-mod"
+
+    logs = []
+    def log(msg):
+        logs.append(msg)
+        logger.info(f"[UPDATER] {msg}")
+
+    try:
+        log("🔄 [1/5] Mengambil pembaruan terbaru dari GitHub...")
+        if not os.path.exists(os.path.join(repo_dir, ".git")):
+            cmd = subprocess.run(["git", "clone", "https://github.com/alijayanet/genieacs-multitab-mod.git", repo_dir], capture_output=True, text=True, timeout=40)
+            if cmd.stdout.strip(): log(cmd.stdout.strip())
+            if cmd.stderr.strip(): log(cmd.stderr.strip())
+        else:
+            cmd = subprocess.run(["git", "-C", repo_dir, "fetch", "origin", "main"], capture_output=True, text=True, timeout=25)
+            if cmd.stdout.strip(): log(cmd.stdout.strip())
+            if cmd.stderr.strip(): log(cmd.stderr.strip())
+            cmd = subprocess.run(["git", "-C", repo_dir, "reset", "--hard", "origin/main"], capture_output=True, text=True, timeout=10)
+            if cmd.stdout.strip(): log(cmd.stdout.strip())
+            if cmd.stderr.strip(): log(cmd.stderr.strip())
+
+        log("📦 [2/5] Memperbarui script Agent (/opt/genieacs-agent/agent.py)...")
+        src_agent = os.path.join(repo_dir, "agent.py")
+        if os.path.exists(src_agent):
+            import shutil
+            shutil.copy2(src_agent, "/opt/genieacs-agent/agent.py")
+            os.chmod("/opt/genieacs-agent/agent.py", 0o755)
+            log("  ✓ agent.py berhasil diperbarui.")
+
+        src_cli = os.path.join(repo_dir, "set-bot.py")
+        if os.path.exists(src_cli):
+            import shutil
+            shutil.copy2(src_cli, "/usr/local/bin/set-bot")
+            os.chmod("/usr/local/bin/set-bot", 0o755)
+            log("  ✓ set-bot CLI berhasil diperbarui.")
+
+        log("🎨 [3/5] Memeriksa & memperbarui antarmuka GenieACS...")
+        tar_file = os.path.join(repo_dir, "genieacs_ui_mod.tar.gz")
+        if os.path.exists(tar_file):
+            tar_cmd = subprocess.run(["tar", "-zxf", tar_file, "-C", "/usr/lib/node_modules/"], capture_output=True, text=True, timeout=30)
+            if tar_cmd.returncode == 0:
+                log("  ✓ genieacs_ui_mod.tar.gz berhasil diekstrak ke /usr/lib/node_modules/.")
+            else:
+                log(f"  ⚠️ Tar extract: {tar_cmd.stderr}")
+
+        log("🔄 [4/5] Me-restart service genieacs-ui...")
+        subprocess.run(["systemctl", "restart", "genieacs-ui"], check=True, timeout=15)
+        log("  ✓ genieacs-ui aktif.")
+
+        try:
+            subprocess.run(["systemctl", "try-restart", "genieacs-whatsapp"], timeout=10)
+        except Exception:
+            pass
+
+        log("🚀 [5/5] Menjadwalkan restart service genieacs-agent dalam 2 detik...")
+        subprocess.Popen(["bash", "-c", "sleep 2 && systemctl restart genieacs-agent"])
+        log("  ✓ Selesai! Sistem akan memuat ulang halaman secara otomatis.")
+
+        return {
+            "success": True,
+            "message": "Pembaruan berhasil diterapkan! Service sedang dimulai ulang.",
+            "logs": "\n".join(logs)
+        }
+    except Exception as e:
+        log(f"❌ Error saat update: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "logs": "\n".join(logs)
+        }
+
+
 class BotConfigHandler(BaseHTTPRequestHandler):
     def parse_cookies(self):
         cookie_header = self.headers.get("Cookie", "")
@@ -2333,6 +2669,9 @@ class BotConfigHandler(BaseHTTPRequestHandler):
                 self.send_json(r.json())
             except Exception as e:
                 self.send_json({"error": str(e)})
+        elif self.path == "/api/system/update_status":
+            st = get_system_update_status()
+            self.send_json(st)
         else:
             self.send_response(404)
             self.end_headers()
@@ -2404,6 +2743,9 @@ class BotConfigHandler(BaseHTTPRequestHandler):
             logger.info("Konfigurasi bot berhasil disimpan melalui Web UI (Port 7558)!")
             self.send_json({"success": True, "message": "Konfigurasi berhasil disimpan"})
 
+        elif self.path == "/api/system/update_apply":
+            res = apply_system_update()
+            self.send_json(res)
         elif self.path in ["/api/whatsapp/logout", "/api/whatsapp/reset"]:
             try:
                 requests.post("http://127.0.0.1:7559/logout", timeout=4.0)
