@@ -256,17 +256,25 @@
       background: #0b1120;
     }
 
-    /* GOJEK / GRAB STYLE CENTER PIN PICKER */
-    #center-picker-container {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -100%);
-      pointer-events: none;
-      z-index: 1000;
-      display: none;
+    /* INTERACTIVE DRAGGABLE PIN PICKER (LEAFLET) */
+    .leaflet-picker-pin {
+      background: transparent !important;
+      border: none !important;
+    }
+
+    .picker-marker-container {
+      position: relative;
+      width: 44px;
+      height: 54px;
+      display: flex;
       flex-direction: column;
       align-items: center;
+      cursor: grab;
+      user-select: none;
+    }
+
+    .picker-marker-container:active {
+      cursor: grabbing;
     }
 
     .picker-pin-wrapper {
@@ -285,7 +293,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 8px 16px rgba(239, 68, 68, 0.5);
+      box-shadow: 0 8px 20px rgba(239, 68, 68, 0.65);
       border: 3px solid #fff;
     }
 
@@ -297,50 +305,66 @@
     .picker-ground-shadow {
       width: 20px;
       height: 6px;
-      background: rgba(0, 0, 0, 0.6);
+      background: rgba(0, 0, 0, 0.65);
       border-radius: 50%;
       margin-top: 4px;
       animation: shadowPulse 1.2s infinite ease-in-out;
     }
 
-    .picker-crosshair {
+    .picker-pin-tooltip {
       position: absolute;
-      bottom: -6px;
-      width: 24px;
-      height: 24px;
-      border: 2px dashed rgba(255, 255, 255, 0.8);
-      border-radius: 50%;
+      top: -26px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid var(--primary);
+      color: #00ebb4;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 6px;
+      white-space: nowrap;
       pointer-events: none;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
     }
 
     @keyframes pinBounce {
       0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-16px); }
+      50% { transform: translateY(-12px); }
     }
 
     @keyframes shadowPulse {
-      0%, 100% { transform: scale(1); opacity: 0.6; }
+      0%, 100% { transform: scale(1); opacity: 0.65; }
       50% { transform: scale(0.6); opacity: 0.25; }
     }
 
-    /* BOTTOM FLOATING CARD FOR PICKER MODE */
+    /* TOP-RIGHT DOCKED TOOLBAR (NEVER BLOCKS MAP CENTER OR ROOFTOPS) */
     #picker-toolbar {
       position: absolute;
-      bottom: 24px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 90%;
-      max-width: 560px;
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 16px;
-      padding: 16px;
-      box-shadow: var(--shadow-lg);
+      top: 14px;
+      right: 14px;
+      width: 360px;
+      max-width: calc(100vw - 28px);
+      max-height: calc(100% - 28px);
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid rgba(0, 235, 180, 0.4);
+      border-radius: 14px;
+      padding: 14px 16px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
       backdrop-filter: blur(12px);
       z-index: 1000;
       display: none;
       flex-direction: column;
-      gap: 12px;
+      gap: 10px;
+      overflow-y: auto;
+      transition: all 0.25s ease;
+    }
+
+    #picker-toolbar.minimized {
+      width: auto;
+      max-width: 90vw;
+      padding: 8px 12px;
+      gap: 0;
     }
 
     .picker-toolbar-header {
@@ -351,22 +375,78 @@
       padding-bottom: 8px;
     }
 
+    #picker-toolbar.minimized .picker-toolbar-header {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
     .picker-title {
       font-weight: 700;
-      font-size: 14px;
+      font-size: 13px;
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       color: var(--primary);
+      white-space: nowrap;
+    }
+
+    .btn-tool-icon {
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 11px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+    }
+    .btn-tool-icon:hover {
+      background: #334155;
+      color: #fff;
     }
 
     .picker-coords {
       font-family: monospace;
       font-size: 11px;
-      color: var(--text-muted);
-      background: #0f172a;
-      padding: 2px 8px;
+      color: #38bdf8;
+      background: #0b1120;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      padding: 3px 8px;
       border-radius: 4px;
+      font-weight: 600;
+    }
+
+    /* TOP HINT BANNER */
+    #picker-hint-banner {
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid var(--primary);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+      color: #f1f5f9;
+      font-size: 12px;
+      padding: 6px 16px;
+      border-radius: 20px;
+      z-index: 1000;
+      pointer-events: none;
+      display: none;
+    }
+
+    @media (max-width: 768px) {
+      #picker-toolbar {
+        top: auto;
+        bottom: 12px;
+        right: 12px;
+        left: 12px;
+        width: auto;
+        max-width: none;
+        max-height: 52vh;
+      }
     }
 
     .form-row {
@@ -806,69 +886,89 @@
   <main id="map-wrapper">
     <div id="map"></div>
 
-    <!-- GOJEK/GRAB STYLE CENTER PIN -->
-    <div id="center-picker-container">
-      <div class="picker-pin-wrapper">
-        <div class="picker-pin-head">
-          <span class="picker-pin-icon" id="picker-pin-icon">🏠</span>
-        </div>
-        <div class="picker-ground-shadow"></div>
-      </div>
-      <div class="picker-crosshair"></div>
+    <!-- FLOATING HINT BANNER -->
+    <div id="picker-hint-banner">
+      <span>📍 <b>Klik peta</b> atau <b>tarik pin merah</b> tepat ke atap rumah pelanggan</span>
     </div>
 
-    <!-- FLOATING PICKER TOOLBAR -->
+    <!-- DOCKED PICKER TOOLBAR (TOP-RIGHT, NEVER COVERS MAP CENTER) -->
     <div id="picker-toolbar">
       <div class="picker-toolbar-header">
         <div class="picker-title">
-          <span>📍 Geser Peta ke Atap Rumah / Lokasi Pelanggan</span>
+          <span>📍 Petakan Lokasi Pelanggan</span>
         </div>
-        <div class="picker-coords" id="picker-coords-display">-7.000000, 110.000000</div>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <button type="button" class="btn-tool-icon" onclick="togglePickerFormMinimize()" id="btn-minimize-picker" title="Sembunyikan / Tampilkan Form">
+            <span id="minimize-icon">🔽</span>
+          </button>
+          <button type="button" class="btn-tool-icon" onclick="togglePickerMode(false)" title="Tutup Picker">
+            ✕
+          </button>
+        </div>
       </div>
 
-      <div class="form-row">
-        <div class="form-group" style="grid-column: span 2;">
+      <!-- MINIMIZED STRIP (Shown only when minimized) -->
+      <div id="picker-minimized-strip" style="display: none; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px;">
+        <span class="picker-coords" id="picker-coords-min-display">-7.000000, 110.000000</span>
+        <div style="display: flex; gap: 6px;">
+          <button class="btn btn-outline" style="padding: 3px 8px; font-size: 11px;" type="button" onclick="togglePickerFormMinimize()">
+            🔼 Form
+          </button>
+          <button class="btn-save" style="padding: 3px 10px; font-size: 11px;" type="button" onclick="saveDeviceLocation()">
+            💾 Simpan
+          </button>
+        </div>
+      </div>
+
+      <!-- FULL FORM BODY -->
+      <div id="picker-form-body" style="display: flex; flex-direction: column; gap: 10px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 2px;">
+          <span style="font-size: 11px; color: var(--text-muted);">Titik Pin:</span>
+          <span class="picker-coords" id="picker-coords-display">-7.000000, 110.000000</span>
+        </div>
+
+        <div class="form-group">
           <label>Pilih Pelanggan / Modem (GenieACS)</label>
           <select id="picker-device-select" class="form-control" onchange="onPickerDeviceChanged()">
             <option value="">-- Pilih Pelanggan --</option>
           </select>
         </div>
-      </div>
 
-      <div class="form-row">
-        <div class="form-group">
-          <label>Nama Pelanggan</label>
-          <input type="text" id="picker-name" class="form-control" placeholder="Nama Lengkap / Tagihan">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Nama Pelanggan</label>
+            <input type="text" id="picker-name" class="form-control" placeholder="Nama Lengkap / Tagihan">
+          </div>
+          <div class="form-group">
+            <label>Hubungkan ke ODP</label>
+            <select id="picker-odp-select" class="form-control">
+              <option value="">-- Tanpa ODP / Belum Tahu --</option>
+            </select>
+          </div>
         </div>
-        <div class="form-group">
-          <label>Hubungkan ke ODP</label>
-          <select id="picker-odp-select" class="form-control">
-            <option value="">-- Tanpa ODP / Belum Tahu --</option>
-          </select>
-        </div>
-      </div>
 
-      <div class="form-row">
-        <div class="form-group">
-          <label>No. HP / WhatsApp</label>
-          <input type="text" id="picker-phone" class="form-control" placeholder="08xxxxxxxxxx">
+        <div class="form-row">
+          <div class="form-group">
+            <label>No. HP / WhatsApp</label>
+            <input type="text" id="picker-phone" class="form-control" placeholder="08xxxxxxxxxx">
+          </div>
+          <div class="form-group">
+            <label>Alamat / Catatan Lokasi</label>
+            <input type="text" id="picker-address" class="form-control" placeholder="Blok / No Rumah / Tiang">
+          </div>
         </div>
-        <div class="form-group">
-          <label>Alamat / Catatan Lokasi</label>
-          <input type="text" id="picker-address" class="form-control" placeholder="Blok / No Rumah / Tiang">
-        </div>
-      </div>
 
-      <div class="picker-actions">
-        <button class="btn btn-outline" type="button" onclick="goToMyLocation()" title="Jadikan titik GPS ponsel Anda saat ini">
-          <span>🎯 Lokasi Saya</span>
-        </button>
-        <button class="btn-save" type="button" onclick="saveDeviceLocation()">
-          <span>💾 Simpan Titik Lokasi</span>
-        </button>
-        <button class="btn-cancel" type="button" onclick="togglePickerMode(false)">
-          <span>Batal</span>
-        </button>
+        <div class="picker-actions">
+          <button class="btn btn-outline" type="button" onclick="goToMyLocation()" title="Jadikan titik GPS ponsel Anda saat ini">
+            <span>🎯 GPS</span>
+          </button>
+          <button class="btn-save" type="button" onclick="saveDeviceLocation()">
+            <span>💾 Simpan Lokasi</span>
+          </button>
+          <button class="btn-cancel" type="button" onclick="togglePickerMode(false)">
+            <span>Batal</span>
+          </button>
+        </div>
       </div>
     </div>
   </main>
@@ -1027,6 +1127,10 @@
     // =========================================================================
     let map = null;
     let isPickerMode = false;
+    let pickerMarker = null;
+    let currentPickerLat = null;
+    let currentPickerLng = null;
+    let isPickerMinimized = false;
     let showCables = true;
     let currentFilter = 'all';
 
@@ -1115,11 +1219,11 @@
 
       L.control.layers(baseLayers, null, { position: 'topright' }).addTo(map);
 
-      // Map move listener for Center Pin Picker
-      map.on('move', function () {
-        if (isPickerMode) {
-          const c = map.getCenter();
-          document.getElementById('picker-coords-display').innerText = `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`;
+      // Map click listener: click anywhere on map in Picker Mode to place/move the pin
+      map.on('click', function (e) {
+        if (isPickerMode && pickerMarker) {
+          pickerMarker.setLatLng(e.latlng);
+          updatePickerCoords(e.latlng.lat, e.latlng.lng);
         }
       });
     }
@@ -1443,31 +1547,116 @@
     }
 
     // =========================================================================
-    // GOJEK/GRAB STYLE CENTER PIN PICKER MODE
+    // INTERACTIVE DRAGGABLE PIN & DOCKED TOOLBAR PICKER MODE
     // =========================================================================
+    function togglePickerFormMinimize() {
+      isPickerMinimized = !isPickerMinimized;
+      const toolbar = document.getElementById('picker-toolbar');
+      const formBody = document.getElementById('picker-form-body');
+      const minStrip = document.getElementById('picker-minimized-strip');
+      const minIcon = document.getElementById('minimize-icon');
+
+      if (isPickerMinimized) {
+        toolbar.classList.add('minimized');
+        formBody.style.display = 'none';
+        minStrip.style.display = 'flex';
+        if (minIcon) minIcon.innerText = '🔼';
+      } else {
+        toolbar.classList.remove('minimized');
+        formBody.style.display = 'flex';
+        minStrip.style.display = 'none';
+        if (minIcon) minIcon.innerText = '🔽';
+      }
+    }
+
+    function updatePickerCoords(lat, lng) {
+      currentPickerLat = lat;
+      currentPickerLng = lng;
+      const str = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+      const d1 = document.getElementById('picker-coords-display');
+      if (d1) d1.innerText = str;
+      const d2 = document.getElementById('picker-coords-min-display');
+      if (d2) d2.innerText = str;
+    }
+
     function togglePickerMode(forceState) {
       isPickerMode = forceState !== undefined ? forceState : !isPickerMode;
 
-      const centerPin = document.getElementById('center-picker-container');
       const toolbar = document.getElementById('picker-toolbar');
+      const hint = document.getElementById('picker-hint-banner');
       const btnPicker = document.getElementById('btn-picker');
       const btnText = document.getElementById('btn-picker-text');
 
       if (isPickerMode) {
-        centerPin.style.display = 'flex';
         toolbar.style.display = 'flex';
+        if (hint) hint.style.display = 'block';
         btnPicker.classList.add('btn-outline');
         btnPicker.classList.remove('btn-primary');
         btnText.innerText = 'Tutup Picker';
 
-        const c = map.getCenter();
-        document.getElementById('picker-coords-display').innerText = `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`;
+        // Determine initial position
+        let startPos = map.getCenter();
+        const devId = document.getElementById('picker-device-select').value;
+        if (devId) {
+          const dev = (devicesData.mapped || []).find(d => d._id === devId);
+          if (dev && dev.lat && dev.lng) {
+            startPos = L.latLng(dev.lat, dev.lng);
+          }
+        }
+
+        if (!pickerMarker) {
+          const pickerDivIcon = L.divIcon({
+            className: 'leaflet-picker-pin',
+            html: `
+              <div class="picker-marker-container">
+                <div class="picker-pin-wrapper">
+                  <div class="picker-pin-head">
+                    <span class="picker-pin-icon">🏠</span>
+                  </div>
+                  <div class="picker-ground-shadow"></div>
+                </div>
+                <div class="picker-pin-tooltip">Tarik / Geser Saya</div>
+              </div>
+            `,
+            iconSize: [44, 54],
+            iconAnchor: [22, 54]
+          });
+
+          pickerMarker = L.marker(startPos, {
+            draggable: true,
+            icon: pickerDivIcon,
+            zIndexOffset: 3000
+          }).addTo(map);
+
+          pickerMarker.on('drag', function (e) {
+            const pos = e.target.getLatLng();
+            updatePickerCoords(pos.lat, pos.lng);
+          });
+
+          pickerMarker.on('dragend', function (e) {
+            const pos = e.target.getLatLng();
+            updatePickerCoords(pos.lat, pos.lng);
+          });
+        } else {
+          pickerMarker.setLatLng(startPos);
+          if (!map.hasLayer(pickerMarker)) {
+            pickerMarker.addTo(map);
+          }
+        }
+
+        updatePickerCoords(startPos.lat, startPos.lng);
+        populatePickerDropdowns();
       } else {
-        centerPin.style.display = 'none';
         toolbar.style.display = 'none';
+        if (hint) hint.style.display = 'none';
         btnPicker.classList.remove('btn-outline');
         btnPicker.classList.add('btn-primary');
         btnText.innerText = 'Pasang Titik (Picker)';
+
+        if (pickerMarker) {
+          map.removeLayer(pickerMarker);
+          pickerMarker = null;
+        }
       }
     }
 
@@ -1548,8 +1737,12 @@
         document.getElementById('picker-phone').value = d.phone || '';
         document.getElementById('picker-address').value = d.address || '';
 
-        // Pan to existing position
+        // Move draggable pin to existing position and pan map
         if (d.lat && d.lng) {
+          if (pickerMarker) {
+            pickerMarker.setLatLng([d.lat, d.lng]);
+            updatePickerCoords(d.lat, d.lng);
+          }
           map.setView([d.lat, d.lng], 18, { animate: true });
         }
       }
@@ -1578,7 +1771,18 @@
         return;
       }
 
-      const center = map.getCenter();
+      let lat = currentPickerLat;
+      let lng = currentPickerLng;
+      if (pickerMarker) {
+        const pos = pickerMarker.getLatLng();
+        lat = pos.lat;
+        lng = pos.lng;
+      } else if (lat === null || lng === null) {
+        const center = map.getCenter();
+        lat = center.lat;
+        lng = center.lng;
+      }
+
       const payload = {
         _id: devId,
         name: document.getElementById('picker-name').value.trim(),
@@ -1586,8 +1790,8 @@
         phone: document.getElementById('picker-phone').value.trim(),
         address: document.getElementById('picker-address').value.trim(),
         notes: '',
-        lat: center.lat,
-        lng: center.lng
+        lat: lat,
+        lng: lng
       };
 
       try {
@@ -2064,9 +2268,12 @@
         pos => {
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
+          if (isPickerMode && pickerMarker) {
+            pickerMarker.setLatLng([lat, lng]);
+            updatePickerCoords(lat, lng);
+          }
           map.setView([lat, lng], 18, { animate: true });
-          document.getElementById('picker-coords-display').innerText = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-          showToast('GPS terdeteksi! Silakan geser pin tepat ke atap.');
+          showToast('GPS terdeteksi! Geser pin tepat ke atap rumah.');
         },
         err => {
           alert('Gagal mendapatkan lokasi GPS: ' + err.message);
