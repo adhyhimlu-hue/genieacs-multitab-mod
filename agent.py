@@ -752,10 +752,18 @@ def add_or_set_wan_pppoe(dev, pppoe_user, pppoe_pass, vlan_id=None):
     if not dev:
         return False, "Modem pelanggan tidak ditemukan."
     dev_id = dev.get("_id")
+    dev_id_info = dev.get("_deviceId", {})
+    mfg = str(dev_id_info.get("_Manufacturer", "")).upper()
+    oui = str(dev_id_info.get("_OUI", "")).upper()
+    prod_class = str(dev_id_info.get("_ProductClass", "")).upper()
+
     igd = dev.get("InternetGatewayDevice", {})
     wandev = igd.get("WANDevice", {})
 
     target_path = None
+    target_node = None
+    best_match_score = -1
+
     for wk in wandev:
         if wk.startswith("_"): continue
         wcds = wandev[wk].get("WANConnectionDevice", {})
@@ -768,24 +776,30 @@ def add_or_set_wan_pppoe(dev, pppoe_user, pppoe_pass, vlan_id=None):
                 name = str(p.get("Name", {}).get("_value", "")).upper()
                 cur_user = str(p.get("Username", {}).get("_value", ""))
                 
-                if "INTERNET" in name or cur_user == pppoe_user:
+                score = 0
+                if cur_user == pppoe_user and pppoe_user:
+                    score = 100
+                elif "INTERNET" in name:
+                    score = 80
+                elif cur_user != "":
+                    score = 50
+                elif cur_user == "":
+                    score = 30
+                
+                if score > best_match_score:
+                    best_match_score = score
                     target_path = f"InternetGatewayDevice.WANDevice.{wk}.WANConnectionDevice.{ck}.WANPPPConnection.{pk}"
-                    break
-                elif not target_path and cur_user == "":
-                    target_path = f"InternetGatewayDevice.WANDevice.{wk}.WANConnectionDevice.{ck}.WANPPPConnection.{pk}"
-            if target_path and "INTERNET" in target_path:
-                break
-        if target_path and "INTERNET" in target_path:
-            break
+                    target_node = p
 
     if not target_path:
-        add_url = f"{NBI_URL}/devices/{quote(dev_id)}/tasks?connection_request"
+        base_obj = "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection."
+        add_url = f"{NBI_URL}/devices/{quote(dev_id, safe='')}/tasks"
         add_body = {
             "name": "addObject",
-            "objectName": "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection."
+            "objectName": base_obj
         }
         try:
-            requests.post(add_url, json=add_body, timeout=8)
+            requests.post(add_url, json=add_body, timeout=5)
         except Exception:
             pass
         target_path = "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1"
@@ -798,36 +812,69 @@ def add_or_set_wan_pppoe(dev, pppoe_user, pppoe_pass, vlan_id=None):
         [f"{target_path}.NATEnabled", "true", "xsd:boolean"]
     ]
 
-    if vlan_id:
-        param_values.extend([
-            [f"{target_path}.X_CT-COM_VlanID", str(vlan_id), "xsd:unsignedInt"],
-            [f"{target_path}.X_ZTE-COM_VlanID", str(vlan_id), "xsd:unsignedInt"],
-            [f"{target_path}.X_HW_VLAN", str(vlan_id), "xsd:unsignedInt"],
-            [f"{target_path}.VLANID", str(vlan_id), "xsd:unsignedInt"]
-        ])
+    # Handle VLAN cleanly and accurately per vendor (prevents TR-069 Fault 9005)
+    if vlan_id is not None and str(vlan_id).strip() not in ("", "-", "0", "None"):
+        v_str = str(vlan_id).strip()
+        detected_vlan_param = None
+        if target_node:
+            for vk in ["X_CT-COM_VlanID", "X_CMCC_VLANIDMark", "X_HW_VLAN", "X_ZTE-COM_VlanID", "VLANID", "X_BROADCOM_COM_VLANID"]:
+                if vk in target_node:
+                    detected_vlan_param = vk
+                    break
+        
+        if detected_vlan_param:
+            param_values.append([f"{target_path}.{detected_vlan_param}", v_str, "xsd:unsignedInt"])
+            if detected_vlan_param == "X_CMCC_VLANIDMark":
+                param_values.append([f"{target_path}.X_CMCC_VLANMode", "1", "xsd:unsignedInt"])
+            elif detected_vlan_param == "X_CT-COM_VlanID":
+                param_values.append([f"{target_path}.X_CT-COM_Mode", "1", "xsd:unsignedInt"])
+        elif "HUAWEI" in mfg or "00259E" in oui:
+            param_values.append([f"{target_path}.X_HW_VLAN", v_str, "xsd:unsignedInt"])
+        elif "ZTE" in mfg or "ZICG" in mfg:
+            param_values.append([f"{target_path}.X_CMCC_VLANIDMark", v_str, "xsd:unsignedInt"])
+            param_values.append([f"{target_path}.X_CMCC_VLANMode", "1", "xsd:unsignedInt"])
+        elif "CIOT" in mfg or "GM220" in prod_class or "M63X" in prod_class or "RTEG" in mfg:
+            param_values.append([f"{target_path}.X_CT-COM_VlanID", v_str, "xsd:unsignedInt"])
+            param_values.append([f"{target_path}.X_CT-COM_Mode", "1", "xsd:unsignedInt"])
+        else:
+            param_values.append([f"{target_path}.VLANID", v_str, "xsd:unsignedInt"])
 
-    url = f"{NBI_URL}/devices/{quote(dev_id)}/tasks?connection_request"
+    url_cr = f"{NBI_URL}/devices/{quote(dev_id, safe='')}/tasks?connection_request"
+    url_queue = f"{NBI_URL}/devices/{quote(dev_id, safe='')}/tasks"
     body = {
         "name": "setParameterValues",
         "parameterValues": param_values
     }
+
+    success = False
     try:
-        r = requests.post(url, json=body, timeout=10)
+        r = requests.post(url_cr, json=body, timeout=4)
         if r.status_code in [200, 202]:
-            vlan_text = f"\n• *VLAN ID*: `{vlan_id}`" if vlan_id else ""
-            return True, (
-                f"✅ *Berhasil Menyetel Koneksi WAN PPPoE!*\n"
-                f"• *Modem*: `{dev_id}`\n"
-                f"• *Username PPPoE*: `{pppoe_user}`\n"
-                f"• *Password PPPoE*: `{pppoe_pass}`"
-                f"{vlan_text}\n"
-                f"• *Profil Path*: `{target_path}`\n"
-                f"• *Status*: Tugas terkirim ke modem via TR-069."
-            )
-        else:
-            return False, f"GenieACS merespon HTTP {r.status_code}: {r.text}"
-    except Exception as e:
-        return False, f"Gagal menghubungi GenieACS NBI: {e}"
+            success = True
+    except Exception:
+        pass
+
+    if not success:
+        try:
+            r = requests.post(url_queue, json=body, timeout=5)
+            if r.status_code in [200, 202]:
+                success = True
+        except Exception as e:
+            logger.error(f"Failed to send setParameterValues to NBI: {e}")
+            return False, f"Gagal menghubungi GenieACS NBI: {e}"
+
+    if success:
+        vlan_text = f"\n• *VLAN ID*: `{vlan_id}`" if (vlan_id and str(vlan_id) not in ("", "0", "-")) else "\n• *VLAN*: `Untagged`"
+        return True, (
+            f"✅ *Berhasil Menerapkan Konfigurasi WAN PPPoE!*\n"
+            f"• *Modem*: `{dev_id}`\n"
+            f"• *Jalur*: `{target_path}`\n"
+            f"• *Username PPPoE*: `{pppoe_user}`\n"
+            f"• *Password*: `{'*' * len(pppoe_pass)}`"
+            f"{vlan_text}\n"
+            f"• *Status*: Tugas TR-069 tersimpan dan akan segera dieksekusi ke modem."
+        )
+    return False, "Gagal mengirim tugas TR-069 ke GenieACS NBI."
 
 def set_superadmin_password(dev, new_pass):
     if not dev:
@@ -2996,7 +3043,9 @@ def get_geo_devices_data():
             if not is_online:
                 rx_status = "offline"
 
+            vlan_raw = vp.get("VlanID", {}).get("_value") or vp.get("vlan", {}).get("_value") or "-"
             dev_info = {
+                "vlan": str(vlan_raw),
                 "_id": dev_id,
                 "pppoe": pppoe,
                 "serial": serial,
@@ -3361,6 +3410,28 @@ class BotConfigHandler(BaseHTTPRequestHandler):
         path = parsed.path
 
         # Endpoint API Geolocation Pelanggan & ODP
+        if path == "/api/wan/set":
+            dev_id = req.get("device_id") or req.get("_id") or req.get("id")
+            pppoe_user = req.get("pppoe_user") or req.get("username", "")
+            pppoe_pass = req.get("pppoe_pass") or req.get("password", "")
+            vlan_id = req.get("vlan_id") or req.get("vlan")
+
+            if not dev_id:
+                self.send_json({"success": False, "message": "ID Perangkat tidak boleh kosong"})
+                return
+            if not pppoe_user:
+                self.send_json({"success": False, "message": "Username PPPoE tidak boleh kosong"})
+                return
+
+            dev = find_device(dev_id)
+            if not dev:
+                self.send_json({"success": False, "message": f"Modem `{dev_id}` tidak ditemukan di database"})
+                return
+
+            ok, msg = add_or_set_wan_pppoe(dev, pppoe_user, pppoe_pass, vlan_id)
+            self.send_json({"success": ok, "message": msg})
+            return
+
         if path == "/api/geo/device":
             res = save_geo_device_data(req)
             self.send_json(res)

@@ -972,6 +972,49 @@
     </div>
   </div>
 
+  <!-- WAN & VLAN CONFIG MODAL -->
+  <div id="wan-modal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <span>⚙️ Konfigurasi WAN PPPoE & Edit VLAN ID</span>
+        <button class="close-modal" onclick="closeWanModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="wan-modal-dev-info" style="font-size: 12px; color: var(--text-muted); background: #0f172a; padding: 10px; border-radius: 8px; border: 1px solid var(--card-border);"></div>
+        
+        <input type="hidden" id="wan-dev-id">
+        
+        <div class="form-group">
+          <label>Username PPPoE</label>
+          <input type="text" id="wan-pppoe-user" class="form-control" placeholder="Contoh: user123">
+        </div>
+
+        <div class="form-group">
+          <label>Password PPPoE</label>
+          <div style="position: relative;">
+            <input type="password" id="wan-pppoe-pass" class="form-control" placeholder="Password PPPoE Pelanggan">
+            <button type="button" onclick="togglePassVisibility()" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px;">👁️</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>VLAN ID (Kosongkan jika Untagged)</label>
+          <input type="number" id="wan-vlan-id" class="form-control" placeholder="Contoh: 100, 200 (Opsional)">
+        </div>
+
+        <div style="font-size: 11px; color: var(--text-muted); line-height: 1.5; background: rgba(0, 235, 180, 0.05); border: 1px solid rgba(0, 235, 180, 0.2); padding: 8px 12px; border-radius: 8px;">
+          💡 <b>Otomatis & Bebas Fault 9005:</b> Sistem otomatis mendeteksi vendor modem (ZTE, Huawei, CIOT/GM220-S) dan menerapkan parameter TR-069 yang tepat secara atomic ke profil WAN internet.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeWanModal()">Batal</button>
+        <button class="btn btn-primary" id="btn-submit-wan" onclick="submitWanConfig()">
+          <span>⚡ Terapkan ke Modem</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- TOAST -->
   <div id="toast"></div>
 
@@ -1293,6 +1336,10 @@
           <span class="popup-val">${dev.last_inform || '-'}</span>
         </div>
         <div class="popup-row">
+          <span class="popup-key">VLAN ID:</span>
+          <span class="popup-val" style="color: #38bdf8; font-weight: 700;">${dev.vlan && dev.vlan !== '-' ? dev.vlan : 'Untagged (-)'}</span>
+        </div>
+        <div class="popup-row">
           <span class="popup-key">ODP Terhubung:</span>
           <span class="popup-val" style="color: #38bdf8;">${odp ? (odp.name || odp._id) : (dev.odp || '-')} (${cableDistanceStr})</span>
         </div>
@@ -1311,6 +1358,9 @@
           <a href="${googleMapsUrl}" target="_blank" class="btn-route">
             <span>🚗 Buka Rute Google Maps</span>
           </a>
+          <button class="btn-popup-sm" style="grid-column: span 2; background: #00ebb4; color: #0f172a; font-weight: 700; border: none; padding: 7px;" onclick="openWanModal('${dev._id}')">
+            <span>⚙️ Edit WAN PPPoE & VLAN ID</span>
+          </button>
           <button class="btn-popup-sm" onclick="editDevicePosition('${dev._id}')">
             <span>✏️ Geser Posisi</span>
           </button>
@@ -1876,6 +1926,88 @@
       } else {
         btn.classList.remove('active');
         cablePolylines.forEach(p => map.removeLayer(p));
+      }
+    }
+
+    // =========================================================================
+    // WAN & VLAN MODAL CONTROLS
+    // =========================================================================
+    function openWanModal(devId) {
+      map.closePopup();
+      let dev = (devicesData.mapped || []).find(x => x._id === devId);
+      if (!dev) {
+        dev = (devicesData.unmapped || []).find(x => x._id === devId);
+      }
+      if (!dev) {
+        alert('Data modem tidak ditemukan');
+        return;
+      }
+
+      document.getElementById('wan-dev-id').value = dev._id;
+      document.getElementById('wan-pppoe-user').value = dev.pppoe !== '-' ? dev.pppoe : '';
+      document.getElementById('wan-pppoe-pass').value = '';
+      document.getElementById('wan-vlan-id').value = (dev.vlan && dev.vlan !== '-') ? dev.vlan : '';
+      
+      const infoBox = document.getElementById('wan-modal-dev-info');
+      infoBox.innerHTML = `
+        <div style="font-weight: 700; color: #f1f5f9; font-size: 13px;">${dev.name || dev.pppoe}</div>
+        <div style="margin-top: 3px;">Model: <b>${dev.product_class || 'ONT'}</b> • SN: <b>${dev.serial || '-'}</b> • Status: <b>${dev.online ? '🟢 Online' : '⚪ Offline'}</b></div>
+      `;
+
+      document.getElementById('wan-modal').style.display = 'flex';
+    }
+
+    function closeWanModal() {
+      document.getElementById('wan-modal').style.display = 'none';
+    }
+
+    function togglePassVisibility() {
+      const p = document.getElementById('wan-pppoe-pass');
+      p.type = p.type === 'password' ? 'text' : 'password';
+    }
+
+    async function submitWanConfig() {
+      const devId = document.getElementById('wan-dev-id').value;
+      const user = document.getElementById('wan-pppoe-user').value.trim();
+      const pass = document.getElementById('wan-pppoe-pass').value.trim();
+      const vlan = document.getElementById('wan-vlan-id').value.trim();
+
+      if (!user) {
+        alert('Username PPPoE tidak boleh kosong!');
+        return;
+      }
+
+      const btn = document.getElementById('btn-submit-wan');
+      const originalText = btn.innerHTML;
+      btn.innerHTML = '<span>⏳ Menerapkan...</span>';
+      btn.disabled = true;
+
+      try {
+        const wanApiUrl = window.location.pathname.startsWith('/bot-proxy') ? '/bot-proxy/api/wan/set' : '/api/wan/set';
+        const res = await fetch(wanApiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            device_id: devId,
+            pppoe_user: user,
+            pppoe_pass: pass,
+            vlan_id: vlan || null
+          })
+        });
+
+        const json = await res.json();
+        if (json.success) {
+          closeWanModal();
+          showToast(`Berhasil menerapkan WAN & VLAN ke ${user}!`);
+          await loadAllData();
+        } else {
+          alert('Gagal menerapkan WAN: ' + json.message);
+        }
+      } catch (err) {
+        alert('Terjadi kesalahan: ' + err.message);
+      } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
       }
     }
 
