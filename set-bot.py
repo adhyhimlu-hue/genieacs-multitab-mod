@@ -10,15 +10,43 @@ import subprocess
 import pymongo
 
 def get_db():
-    uris = [
+    candidates = []
+    if os.environ.get("GENIEACS_MONGODB_CONNECTION_URL"):
+        candidates.append(os.environ.get("GENIEACS_MONGODB_CONNECTION_URL"))
+    for env_path in ["/opt/genieacs/genieacs.env", "/etc/genieacs.env", "/etc/default/genieacs"]:
+        if os.path.isfile(env_path):
+            try:
+                with open(env_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("GENIEACS_MONGODB_CONNECTION_URL="):
+                            val = line.split("=", 1)[1].strip().strip('"').strip("'")
+                            if val and val not in candidates:
+                                candidates.append(val)
+            except Exception:
+                pass
+    for default_uri in [
         "mongodb://genie:genie@127.0.0.1:27017/genieacs",
-        "mongodb://127.0.0.1:27017/genieacs"
-    ]
-    for uri in uris:
+        "mongodb://genie:genie@127.0.0.1/genieacs",
+        "mongodb://127.0.0.1:27017/genieacs",
+        "mongodb://127.0.0.1/genieacs",
+        "mongodb://localhost:27017/genieacs"
+    ]:
+        if default_uri not in candidates:
+            candidates.append(default_uri)
+
+    for uri in candidates:
         try:
             client = pymongo.MongoClient(uri, serverSelectionTimeoutMS=2000)
-            client.server_info()
-            return client['genieacs']
+            db_name = "genieacs"
+            try:
+                p = client.get_default_database()
+                if p is not None:
+                    db_name = p.name
+            except Exception:
+                pass
+            client[db_name].command("ping")
+            return client[db_name]
         except Exception:
             continue
     return None

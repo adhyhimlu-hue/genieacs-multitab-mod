@@ -207,7 +207,22 @@ mongod --dbpath /var/lib/mongodb --bind_ip 127.0.0.1 --port 27017 --fork --logpa
 
 sleep 3
 
-# Buat database genieacs dan user genie:genie jika mongo/mongosh tersedia
+# Buat / update database genieacs dan user genie:genie dengan role readWrite & dbAdmin
+python3 - << 'EOF' 2>/dev/null || true
+import pymongo
+try:
+    c = pymongo.MongoClient("mongodb://127.0.0.1:27017/admin", serverSelectionTimeoutMS=3000)
+    db = c["genieacs"]
+    try:
+        db.command("createUser", "genie", pwd="genie", roles=[{"role": "readWrite", "db": "genieacs"}, {"role": "dbAdmin", "db": "genieacs"}])
+        print("User genie created successfully with readWrite and dbAdmin")
+    except Exception:
+        db.command("updateUser", "genie", roles=[{"role": "readWrite", "db": "genieacs"}, {"role": "dbAdmin", "db": "genieacs"}])
+        print("User genie roles updated with readWrite and dbAdmin")
+except Exception as e:
+    print(f"PyMongo init warning: {e}")
+EOF
+
 if command -v mongo >/dev/null 2>&1; then
   MONGO_CLI="mongo"
 elif command -v mongosh >/dev/null 2>&1; then
@@ -222,13 +237,18 @@ if [ -n "$MONGO_CLI" ]; then
       db.getSiblingDB('genieacs').createUser({
         user: 'genie',
         pwd: 'genie',
-        roles: [{ role: 'readWrite', db: 'genieacs' }]
+        roles: [{ role: 'readWrite', db: 'genieacs' }, { role: 'dbAdmin', db: 'genieacs' }]
       });
       print('User genie created successfully');
     } catch(e) {
-      print('User already exists or skipped: ' + e);
+      try {
+        db.getSiblingDB('genieacs').updateUser('genie', {
+          roles: [{ role: 'readWrite', db: 'genieacs' }, { role: 'dbAdmin', db: 'genieacs' }]
+        });
+        print('User genie roles updated');
+      } catch(e2) {}
     }
-  " 127.0.0.1:27017/admin || true
+  " 127.0.0.1:27017/admin >/dev/null 2>&1 || true
 fi
 
 # Matikan proses mongod sementara dan jalankan via systemd resmi
@@ -291,11 +311,56 @@ if [ -n "$BACKUP_ARCHIVE" ] && [ -f "$BACKUP_ARCHIVE" ]; then
     fi
   fi
   
+  # Fallback restore dengan PyMongo dan BSON jika mongorestore gagal atau belum ada
+  if [ "$RESTORE_OK" -ne 1 ]; then
+    echo -e "${YELLOW}Menjalankan Python PyMongo fallback restore...${NC}"
+    if python3 -c '
+import os, sys, pymongo, bson
+target_dir = sys.argv[1]
+client = None
+for uri in ["mongodb://genie:genie@127.0.0.1:27017/genieacs", "mongodb://127.0.0.1:27017/genieacs"]:
+    try:
+        c = pymongo.MongoClient(uri, serverSelectionTimeoutMS=2000)
+        c.genieacs.command("ping")
+        client = c
+        break
+    except Exception:
+        continue
+if not client:
+    sys.exit(1)
+db = client["genieacs"]
+for f in os.listdir(target_dir):
+    if f.endswith(".bson"):
+        col = f[:-5]
+        with open(os.path.join(target_dir, f), "rb") as bf:
+            docs = bson.decode_all(bf.read())
+            if docs:
+                db[col].drop()
+                db[col].insert_many(docs)
+sys.exit(0)
+' "$TMP_RESTORE_DIR/genieacs" 2>/dev/null; then
+      RESTORE_OK=1
+    fi
+  fi
+  
   if [ "$RESTORE_OK" -eq 1 ]; then
     echo -e "${GREEN}[OK] Database GenieACS berhasil di-restore 100% siap pakai! (Virtual Parameters, Presets, Provisions)${NC}"
   else
     echo -e "${RED}[WARNING] Gagal me-restore database otomatis. Silakan jalankan 'bash apply-template.sh' nanti.${NC}"
   fi
+
+  # Bersihkan cache hash UI lokal agar langsung update tampilan
+  python3 -c '
+import pymongo
+for uri in ["mongodb://genie:genie@127.0.0.1:27017/genieacs", "mongodb://127.0.0.1:27017/genieacs"]:
+    try:
+        c = pymongo.MongoClient(uri, serverSelectionTimeoutMS=1500)
+        c.genieacs.config.delete_one({"_id": "ui-local-cache-hash"})
+        break
+    except Exception:
+        pass
+' 2>/dev/null || true
+
   rm -rf "$TMP_RESTORE_DIR"
 else
   echo -e "${YELLOW}[INFO] File genieacs_db.tar.gz tidak ditemukan. Database akan dimulai dari awal.${NC}"
@@ -328,7 +393,11 @@ if [ -n "$MOD_ARCHIVE" ] && [ -f "$MOD_ARCHIVE" ]; then
   fi
   
   if [ -n "$GENIE_DIR" ]; then
-    tar -zxf "$MOD_ARCHIVE" -C "$GENIE_DIR/"
+    tar -zxf "$MOD_ARCHIVE" --strip-components=1 -C "$GENIE_DIR/" 2>/dev/null || tar -zxf "$MOD_ARCHIVE" -C "$GENIE_DIR/"
+    if [ -d "$GENIE_DIR/genieacs/public" ]; then
+      cp -rf "$GENIE_DIR/genieacs/"* "$GENIE_DIR/"
+      rm -rf "$GENIE_DIR/genieacs"
+    fi
     chmod +x "$GENIE_DIR/bin/"* 2>/dev/null || true
     cp -f "$GENIE_DIR/bin/"* /usr/bin/ 2>/dev/null || true
     cp -f "$GENIE_DIR/bin/"* /usr/local/bin/ 2>/dev/null || true

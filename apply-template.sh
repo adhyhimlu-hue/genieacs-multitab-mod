@@ -50,6 +50,10 @@ if [ ! -f "$ARCHIVE" ]; then
   fi
 fi
 
+# Pasang dependensi dasar Python jika belum ada
+apt-get update -y >/dev/null 2>&1 || true
+apt-get install -y python3-requests python3-pymongo 2>/dev/null || true
+
 # Cek mongorestore
 if ! command -v mongorestore >/dev/null 2>&1; then
   echo -e "${YELLOW}[!] Memasang paket mongo-tools (mongorestore)...${NC}"
@@ -70,20 +74,62 @@ if ! command -v mongorestore >/dev/null 2>&1; then
   fi
 fi
 
-# Coba deteksi URI MongoDB (dengan user genie atau tanpa auth)
-MONGO_URI=""
-if mongosh --quiet --eval "db.runCommand({ping:1})" "mongodb://genie:genie@127.0.0.1:27017/genieacs" >/dev/null 2>&1; then
-  MONGO_URI="mongodb://genie:genie@127.0.0.1:27017/genieacs"
-elif mongosh --quiet --eval "db.runCommand({ping:1})" "mongodb://127.0.0.1:27017/genieacs" >/dev/null 2>&1; then
-  MONGO_URI="mongodb://127.0.0.1:27017/genieacs"
-elif mongo --quiet --eval "db.runCommand({ping:1})" "mongodb://genie:genie@127.0.0.1:27017/genieacs" >/dev/null 2>&1; then
-  MONGO_URI="mongodb://genie:genie@127.0.0.1:27017/genieacs"
-elif mongo --quiet --eval "db.runCommand({ping:1})" "mongodb://127.0.0.1:27017/genieacs" >/dev/null 2>&1; then
-  MONGO_URI="mongodb://127.0.0.1:27017/genieacs"
-else
-  # Default jika cli tidak ada
-  MONGO_URI="mongodb://genie:genie@127.0.0.1:27017/genieacs"
-fi
+# Deteksi URI MongoDB secara dinamis (membaca .env & memvalidasi ping koneksi aktif)
+MONGO_URI=$(python3 - << 'EOF'
+import os, sys, pymongo
+
+candidates = []
+# 1. Dari Environment
+if os.environ.get("GENIEACS_MONGODB_CONNECTION_URL"):
+    candidates.append(os.environ.get("GENIEACS_MONGODB_CONNECTION_URL"))
+
+# 2. Dari File Konfigurasi GenieACS
+for path in ["/opt/genieacs/genieacs.env", "/etc/genieacs.env", "/etc/default/genieacs"]:
+    if os.path.isfile(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("GENIEACS_MONGODB_CONNECTION_URL="):
+                        val = line.split("=", 1)[1].strip().strip('"').strip("'")
+                        if val and val not in candidates:
+                            candidates.append(val)
+        except Exception:
+            pass
+
+# 3. Default Candidates
+for default_uri in [
+    "mongodb://genie:genie@127.0.0.1:27017/genieacs",
+    "mongodb://genie:genie@127.0.0.1/genieacs",
+    "mongodb://127.0.0.1:27017/genieacs",
+    "mongodb://127.0.0.1/genieacs",
+    "mongodb://localhost:27017/genieacs"
+]:
+    if default_uri not in candidates:
+        candidates.append(default_uri)
+
+working_uri = ""
+for uri in candidates:
+    try:
+        client = pymongo.MongoClient(uri, serverSelectionTimeoutMS=2000)
+        db_name = "genieacs"
+        try:
+            p = client.get_default_database()
+            if p is not None:
+                db_name = p.name
+        except Exception:
+            pass
+        client[db_name].command("ping")
+        working_uri = uri
+        break
+    except Exception:
+        continue
+
+print(working_uri if working_uri else "mongodb://genie:genie@127.0.0.1:27017/genieacs")
+EOF
+)
+
+echo -e "${BLUE}[INFO] URI MongoDB terdeteksi:${NC} ${GREEN}${MONGO_URI}${NC}"
 
 echo -e "${BLUE}[1/3] Mengekstrak template tampilan & parameter...${NC}"
 TMP_DIR="/tmp/genieacs_template_$$"
@@ -91,18 +137,74 @@ mkdir -p "$TMP_DIR"
 tar -xzf "$ARCHIVE" -C "$TMP_DIR"
 
 echo -e "${BLUE}[2/3] Menerapkan konfigurasi UI, Virtual Parameters & Provisions...${NC}"
-echo -e "${YELLOW}Catatan: Data perangkat (devices) & akun user server ini TIDAK AKAN TERHAPUS.${NC}"
+echo -e "${YELLOW}Catatan: Data perangkat (devices) & akun user server ini 100% AMAN (TIDAK AKAN TERHAPUS).${NC}"
 
-# Restore hanya koleksi tampilan dan fungsi
-mongorestore --uri="$MONGO_URI" --drop "$TMP_DIR/genieacs" || \
-mongorestore --drop "$TMP_DIR/genieacs"
-
-# Bersihkan cache hash UI lokal
-if command -v mongosh >/dev/null 2>&1; then
-  mongosh "$MONGO_URI" --quiet --eval "db.config.deleteOne({_id: 'ui-local-cache-hash'})" 2>/dev/null || true
-elif command -v mongo >/dev/null 2>&1; then
-  mongo "$MONGO_URI" --quiet --eval "db.config.remove({_id: 'ui-local-cache-hash'})" 2>/dev/null || true
+RESTORE_OK=0
+if command -v mongorestore >/dev/null 2>&1; then
+  if mongorestore --uri="$MONGO_URI" --drop "$TMP_DIR/genieacs" >/dev/null 2>&1; then
+    RESTORE_OK=1
+  elif mongorestore --drop "$TMP_DIR/genieacs" >/dev/null 2>&1; then
+    RESTORE_OK=1
+  fi
 fi
+
+# Fallback restore dengan PyMongo dan BSON jika mongorestore gagal atau terkendala izin
+if [ "$RESTORE_OK" -ne 1 ]; then
+  echo -e "${YELLOW}Menjalankan Python PyMongo fallback restore...${NC}"
+  if python3 -c '
+import os, sys, pymongo, bson
+target_dir = sys.argv[1]
+uri = sys.argv[2]
+try:
+    client = pymongo.MongoClient(uri, serverSelectionTimeoutMS=3000)
+    db_name = "genieacs"
+    try:
+        p = client.get_default_database()
+        if p is not None:
+            db_name = p.name
+    except Exception:
+        pass
+    db = client[db_name]
+    for f in os.listdir(target_dir):
+        if f.endswith(".bson"):
+            col = f[:-5]
+            with open(os.path.join(target_dir, f), "rb") as bf:
+                docs = bson.decode_all(bf.read())
+                if docs:
+                    db[col].drop()
+                    db[col].insert_many(docs)
+    sys.exit(0)
+except Exception as e:
+    print(f"Fallback restore error: {e}", file=sys.stderr)
+    sys.exit(1)
+' "$TMP_DIR/genieacs" "$MONGO_URI" 2>/dev/null; then
+    RESTORE_OK=1
+  fi
+fi
+
+if [ "$RESTORE_OK" -eq 1 ]; then
+  echo -e "${GREEN}[OK] Template UI, Virtual Parameters, Presets & Provisions berhasil diterapkan!${NC}"
+else
+  echo -e "${RED}[WARNING] Terjadi kendala saat restore template. Silakan periksa koneksi MongoDB.${NC}"
+fi
+
+# Bersihkan cache hash UI lokal agar langsung update tampilan
+python3 -c '
+import sys, pymongo
+uri = sys.argv[1]
+try:
+    client = pymongo.MongoClient(uri, serverSelectionTimeoutMS=2000)
+    db_name = "genieacs"
+    try:
+        p = client.get_default_database()
+        if p is not None:
+            db_name = p.name
+    except Exception:
+        pass
+    client[db_name].config.delete_one({"_id": "ui-local-cache-hash"})
+except Exception:
+    pass
+' "$MONGO_URI" 2>/dev/null || true
 
 rm -rf "$TMP_DIR"
 
@@ -126,7 +228,11 @@ if [ -n "$MOD_ARCHIVE" ] && [ -f "$MOD_ARCHIVE" ]; then
   fi
   
   if [ -n "$GENIE_DIR" ]; then
-    tar -zxf "$MOD_ARCHIVE" -C "$GENIE_DIR/"
+    tar -zxf "$MOD_ARCHIVE" --strip-components=1 -C "$GENIE_DIR/" 2>/dev/null || tar -zxf "$MOD_ARCHIVE" -C "$GENIE_DIR/"
+    if [ -d "$GENIE_DIR/genieacs/public" ]; then
+      cp -rf "$GENIE_DIR/genieacs/"* "$GENIE_DIR/"
+      rm -rf "$GENIE_DIR/genieacs"
+    fi
     chmod +x "$GENIE_DIR/bin/"* 2>/dev/null || true
     cp -f "$GENIE_DIR/bin/"* /usr/bin/ 2>/dev/null || true
     cp -f "$GENIE_DIR/bin/"* /usr/local/bin/ 2>/dev/null || true
@@ -135,8 +241,6 @@ if [ -n "$MOD_ARCHIVE" ] && [ -f "$MOD_ARCHIVE" ]; then
   fi
 fi
 
-# Pasang paket Python untuk agen AI jika belum ada
-apt-get install -y python3-requests python3-pymongo 2>/dev/null || true
 
 # Pasang script agen jika ada di direktori
 mkdir -p /opt/genieacs-agent

@@ -36,7 +36,62 @@ logging.basicConfig(
 )
 logger = logging.getLogger("GenieACSAgent")
 
-MONGO_URI = "mongodb://genie:genie@127.0.0.1:27017/genieacs"
+_CURRENT_MONGO_CLIENT = None
+_RESOLVED_MONGO_URI = None
+
+def resolve_mongo_uri():
+    global _RESOLVED_MONGO_URI
+    if _RESOLVED_MONGO_URI:
+        return _RESOLVED_MONGO_URI
+
+    candidates = []
+    if os.environ.get("GENIEACS_MONGODB_CONNECTION_URL"):
+        candidates.append(os.environ.get("GENIEACS_MONGODB_CONNECTION_URL"))
+
+    for env_path in ["/opt/genieacs/genieacs.env", "/etc/genieacs.env", "/etc/default/genieacs"]:
+        if os.path.isfile(env_path):
+            try:
+                with open(env_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("GENIEACS_MONGODB_CONNECTION_URL="):
+                            val = line.split("=", 1)[1].strip().strip('"').strip("'")
+                            if val and val not in candidates:
+                                candidates.append(val)
+            except Exception:
+                pass
+
+    for default_uri in [
+        "mongodb://genie:genie@127.0.0.1:27017/genieacs",
+        "mongodb://genie:genie@127.0.0.1/genieacs",
+        "mongodb://127.0.0.1:27017/genieacs",
+        "mongodb://127.0.0.1/genieacs",
+        "mongodb://localhost:27017/genieacs"
+    ]:
+        if default_uri not in candidates:
+            candidates.append(default_uri)
+
+    for uri in candidates:
+        try:
+            client = pymongo.MongoClient(uri, serverSelectionTimeoutMS=1500)
+            db_name = "genieacs"
+            try:
+                p = client.get_default_database()
+                if p is not None:
+                    db_name = p.name
+            except Exception:
+                pass
+            client[db_name].command("ping")
+            _RESOLVED_MONGO_URI = uri
+            logger.info(f"MongoDB connected successfully via: {uri.split('@')[-1] if '@' in uri else uri}")
+            return uri
+        except Exception:
+            continue
+
+    _RESOLVED_MONGO_URI = candidates[0] if candidates else "mongodb://genie:genie@127.0.0.1:27017/genieacs"
+    return _RESOLVED_MONGO_URI
+
+MONGO_URI = resolve_mongo_uri()
 NBI_URL = "http://127.0.0.1:7557"
 
 USER_STATES = {}
@@ -44,11 +99,38 @@ SEEN_DEVICES = set()
 NOTIFIED_DROPS = {} # device_id -> timestamp
 
 def get_db():
+    global _CURRENT_MONGO_CLIENT, _RESOLVED_MONGO_URI
     try:
-        client = pymongo.MongoClient(MONGO_URI, serverSelectionTimeoutMS=3000)
-        return client['genieacs']
+        if _CURRENT_MONGO_CLIENT is not None:
+            try:
+                db_name = "genieacs"
+                try:
+                    p = _CURRENT_MONGO_CLIENT.get_default_database()
+                    if p is not None:
+                        db_name = p.name
+                except Exception:
+                    pass
+                _CURRENT_MONGO_CLIENT[db_name].command("ping")
+                return _CURRENT_MONGO_CLIENT[db_name]
+            except Exception:
+                _CURRENT_MONGO_CLIENT = None
+
+        uri = resolve_mongo_uri()
+        client = pymongo.MongoClient(uri, serverSelectionTimeoutMS=3000)
+        db_name = "genieacs"
+        try:
+            p = client.get_default_database()
+            if p is not None:
+                db_name = p.name
+        except Exception:
+            pass
+        client[db_name].command("ping")
+        _CURRENT_MONGO_CLIENT = client
+        return client[db_name]
     except Exception as e:
         logger.error(f"MongoDB connection failed: {e}")
+        _RESOLVED_MONGO_URI = None
+        _CURRENT_MONGO_CLIENT = None
         return None
 
 def get_config():
