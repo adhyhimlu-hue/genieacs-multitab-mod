@@ -2912,6 +2912,291 @@ def apply_system_update():
         }
 
 
+
+# ==============================================================================
+# FITUR GEOLOCATION / MAPPING ODP & KLIEN (ALIJAYA NET)
+# ==============================================================================
+
+def get_geo_devices_data():
+    db = get_db()
+    if db is None:
+        return {"success": False, "error": "Database tidak terhubung", "mapped": [], "unmapped": []}
+    
+    try:
+        now_ts = time.time()
+        loc_cursor = db.device_locations.find({})
+        mapped_map = {}
+        for doc in loc_cursor:
+            dev_id = doc.get("_id")
+            if dev_id:
+                mapped_map[dev_id] = doc
+
+        dev_cursor = db.devices.find({}, {
+            "_id": 1,
+            "_deviceId": 1,
+            "_lastInform": 1,
+            "_ip": 1,
+            "VirtualParameters": 1,
+            "InternetGatewayDevice.WANDevice": 1
+        })
+
+        mapped_list = []
+        unmapped_list = []
+        all_devices_dict = {}
+
+        for dev in dev_cursor:
+            dev_id = dev.get("_id")
+            if not dev_id:
+                continue
+            all_devices_dict[dev_id] = dev
+
+            pppoe = get_device_pppoe_username(dev)
+            serial = dev.get("_deviceId", {}).get("_SerialNumber", "-")
+            product_class = dev.get("_deviceId", {}).get("_ProductClass", "-")
+            ip = dev.get("_ip", "-")
+            
+            vp = dev.get("VirtualParameters", {})
+            rx_raw = vp.get("RXPower", {}).get("_value")
+            rx_val = None
+            rx_str = "-"
+            rx_status = "unknown"
+            
+            if rx_raw is not None and str(rx_raw).strip() not in ("", "-", "undefined", "null"):
+                try:
+                    cleaned_rx = str(rx_raw).replace("dBm", "").strip()
+                    rx_val = round(float(cleaned_rx), 2)
+                    rx_str = f"{rx_val} dBm"
+                    if rx_val >= -24.0:
+                        rx_status = "normal"
+                    elif rx_val >= -27.0:
+                        rx_status = "warning"
+                    else:
+                        rx_status = "critical"
+                except Exception:
+                    rx_str = str(rx_raw)
+
+            last_inform = dev.get("_lastInform")
+            is_online = False
+            last_inform_str = "-"
+            if last_inform:
+                try:
+                    diff_sec = now_ts - last_inform.timestamp()
+                    is_online = (diff_sec < 600)
+                    if diff_sec < 60:
+                        last_inform_str = "Baru saja"
+                    elif diff_sec < 3600:
+                        last_inform_str = f"{int(diff_sec // 60)} mnt lalu"
+                    elif diff_sec < 86400:
+                        last_inform_str = f"{int(diff_sec // 3600)} jam lalu"
+                    else:
+                        last_inform_str = f"{int(diff_sec // 86400)} hari lalu"
+                except Exception:
+                    pass
+
+            if not is_online:
+                rx_status = "offline"
+
+            dev_info = {
+                "_id": dev_id,
+                "pppoe": pppoe,
+                "serial": serial,
+                "product_class": product_class,
+                "ip": ip,
+                "rx": rx_str,
+                "rx_val": rx_val,
+                "rx_status": rx_status,
+                "online": is_online,
+                "last_inform": last_inform_str
+            }
+
+            if dev_id in mapped_map:
+                loc_doc = mapped_map[dev_id]
+                item = {
+                    **dev_info,
+                    "name": loc_doc.get("name") or pppoe,
+                    "lat": float(loc_doc.get("lat", 0.0)),
+                    "lng": float(loc_doc.get("lng", 0.0)),
+                    "odp": loc_doc.get("odp", ""),
+                    "phone": loc_doc.get("phone", ""),
+                    "address": loc_doc.get("address", ""),
+                    "notes": loc_doc.get("notes", ""),
+                    "updated_at": loc_doc.get("updated_at", "")
+                }
+                mapped_list.append(item)
+            else:
+                unmapped_list.append(dev_info)
+
+        for dev_id, loc_doc in mapped_map.items():
+            if dev_id not in all_devices_dict:
+                mapped_list.append({
+                    "_id": dev_id,
+                    "name": loc_doc.get("name", dev_id),
+                    "pppoe": loc_doc.get("name", dev_id),
+                    "serial": "-",
+                    "product_class": "-",
+                    "ip": "-",
+                    "rx": "-",
+                    "rx_val": None,
+                    "rx_status": "offline",
+                    "online": False,
+                    "last_inform": "-",
+                    "lat": float(loc_doc.get("lat", 0.0)),
+                    "lng": float(loc_doc.get("lng", 0.0)),
+                    "odp": loc_doc.get("odp", ""),
+                    "phone": loc_doc.get("phone", ""),
+                    "address": loc_doc.get("address", ""),
+                    "notes": loc_doc.get("notes", ""),
+                    "updated_at": loc_doc.get("updated_at", "")
+                })
+
+        return {
+            "success": True,
+            "mapped": mapped_list,
+            "unmapped": unmapped_list,
+            "total_mapped": len(mapped_list),
+            "total_unmapped": len(unmapped_list)
+        }
+    except Exception as e:
+        logger.error(f"Error getting geo devices data: {e}", exc_info=True)
+        return {"success": False, "error": str(e), "mapped": [], "unmapped": []}
+
+
+def save_geo_device_data(data):
+    db = get_db()
+    if db is None:
+        return {"success": False, "message": "Database tidak terhubung"}
+    
+    dev_id = str(data.get("_id") or "").strip()
+    if not dev_id:
+        return {"success": False, "message": "ID Perangkat tidak boleh kosong"}
+    
+    try:
+        lat = float(data.get("lat", 0.0))
+        lng = float(data.get("lng", 0.0))
+    except (ValueError, TypeError):
+        return {"success": False, "message": "Koordinat Latitude / Longitude tidak valid"}
+
+    doc = {
+        "_id": dev_id,
+        "name": str(data.get("name") or "").strip(),
+        "lat": lat,
+        "lng": lng,
+        "odp": str(data.get("odp") or "").strip(),
+        "phone": str(data.get("phone") or "").strip(),
+        "address": str(data.get("address") or "").strip(),
+        "notes": str(data.get("notes") or "").strip(),
+        "updated_at": time.strftime("%Y-%m-%d %H:%M:%S")
+    }
+    
+    try:
+        db.device_locations.update_one({"_id": dev_id}, {"$set": doc}, upsert=True)
+        return {"success": True, "message": "Titik lokasi pelanggan berhasil disimpan", "data": doc}
+    except Exception as e:
+        logger.error(f"Error saving geo device {dev_id}: {e}", exc_info=True)
+        return {"success": False, "message": f"Gagal menyimpan ke database: {e}"}
+
+
+def delete_geo_device_data(dev_id):
+    db = get_db()
+    if db is None:
+        return {"success": False, "message": "Database tidak terhubung"}
+    
+    if not dev_id:
+        return {"success": False, "message": "ID Perangkat tidak boleh kosong"}
+    
+    try:
+        res = db.device_locations.delete_one({"_id": dev_id})
+        return {"success": True, "message": f"Lokasi pelanggan berhasil dihapus ({res.deleted_count})"}
+    except Exception as e:
+        return {"success": False, "message": f"Gagal menghapus: {e}"}
+
+
+def get_geo_odps_data():
+    db = get_db()
+    if db is None:
+        return {"success": False, "error": "Database tidak terhubung", "odps": []}
+    
+    try:
+        odp_cursor = db.odp_locations.find({})
+        odp_list = []
+        for doc in odp_cursor:
+            odp_id = doc.get("_id")
+            if not odp_id:
+                continue
+            
+            used = db.device_locations.count_documents({"odp": odp_id})
+            cap = int(doc.get("capacity", 8))
+            
+            odp_list.append({
+                "_id": odp_id,
+                "name": doc.get("name") or odp_id,
+                "lat": float(doc.get("lat", 0.0)),
+                "lng": float(doc.get("lng", 0.0)),
+                "capacity": cap,
+                "color": doc.get("color", "#3b82f6"),
+                "notes": doc.get("notes", ""),
+                "used_ports": used,
+                "available_ports": max(0, cap - used),
+                "updated_at": doc.get("updated_at", "")
+            })
+            
+        return {"success": True, "odps": odp_list}
+    except Exception as e:
+        logger.error(f"Error getting geo ODPs: {e}", exc_info=True)
+        return {"success": False, "error": str(e), "odps": []}
+
+
+def save_geo_odp_data(data):
+    db = get_db()
+    if db is None:
+        return {"success": False, "message": "Database tidak terhubung"}
+    
+    odp_id = str(data.get("_id") or "").strip().upper()
+    if not odp_id:
+        count = db.odp_locations.count_documents({}) + 1
+        odp_id = f"ODP-ALJ-{count:02d}"
+    
+    try:
+        lat = float(data.get("lat", 0.0))
+        lng = float(data.get("lng", 0.0))
+    except (ValueError, TypeError):
+        return {"success": False, "message": "Koordinat Latitude / Longitude tidak valid"}
+
+    doc = {
+        "_id": odp_id,
+        "name": str(data.get("name") or odp_id).strip(),
+        "lat": lat,
+        "lng": lng,
+        "capacity": int(data.get("capacity", 8)),
+        "color": str(data.get("color") or "#3b82f6").strip(),
+        "notes": str(data.get("notes") or "").strip(),
+        "updated_at": time.strftime("%Y-%m-%d %H:%M:%S")
+    }
+
+    try:
+        db.odp_locations.update_one({"_id": odp_id}, {"$set": doc}, upsert=True)
+        return {"success": True, "message": f"Data {odp_id} berhasil disimpan", "data": doc}
+    except Exception as e:
+        logger.error(f"Error saving ODP {odp_id}: {e}", exc_info=True)
+        return {"success": False, "message": f"Gagal menyimpan ODP: {e}"}
+
+
+def delete_geo_odp_data(odp_id):
+    db = get_db()
+    if db is None:
+        return {"success": False, "message": "Database tidak terhubung"}
+    
+    if not odp_id:
+        return {"success": False, "message": "ID ODP tidak boleh kosong"}
+    
+    try:
+        res = db.odp_locations.delete_one({"_id": odp_id})
+        db.device_locations.update_many({"odp": odp_id}, {"$set": {"odp": ""}})
+        return {"success": True, "message": f"ODP {odp_id} berhasil dihapus"}
+    except Exception as e:
+        return {"success": False, "message": f"Gagal menghapus ODP: {e}"}
+
+
 class BotConfigHandler(BaseHTTPRequestHandler):
     def parse_cookies(self):
         cookie_header = self.headers.get("Cookie", "")
@@ -2922,6 +3207,13 @@ class BotConfigHandler(BaseHTTPRequestHandler):
                     k, v = c.strip().split("=", 1)
                     cookies[k.strip()] = v.strip()
         return cookies
+
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+        self.end_headers()
 
     def is_authenticated_admin(self):
         client_ip = self.client_address[0] if self.client_address else ""
@@ -2979,6 +3271,43 @@ class BotConfigHandler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(data).encode("utf-8"))
 
     def do_GET(self):
+        parsed = urlparse(self.path)
+        path = parsed.path
+
+        # Jalur Akses Peta & API Geolocation (Bebas CORS & Iframe)
+        if path in ("/peta", "/peta.html"):
+            peta_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "public", "peta.html")
+            if not os.path.exists(peta_path):
+                for cand in [
+                    "/usr/lib/node_modules/genieacs/public/peta.html",
+                    "/usr/local/lib/node_modules/genieacs/public/peta.html",
+                    "/opt/genieacs/public/peta.html"
+                ]:
+                    if os.path.exists(cand):
+                        peta_path = cand
+                        break
+            if os.path.exists(peta_path):
+                try:
+                    with open(peta_path, "r", encoding="utf-8") as f:
+                        content = f.read()
+                    self.send_html(content)
+                    return
+                except Exception as e:
+                    self.send_html(f"<h3>Gagal memuat peta: {e}</h3>", status=500)
+                    return
+            else:
+                self.send_html("<h3>File peta.html belum tersedia</h3>", status=404)
+                return
+
+        if path == "/api/geo/devices":
+            data = get_geo_devices_data()
+            self.send_json(data)
+            return
+
+        if path == "/api/geo/odps":
+            data = get_geo_odps_data()
+            self.send_json(data)
+            return
         if not self.is_authenticated_admin():
             if self.path == "/" or self.path.startswith("/?"):
                 self.send_html(HTML_LOGIN_PAGE)
@@ -3027,6 +3356,32 @@ class BotConfigHandler(BaseHTTPRequestHandler):
             req = json.loads(body)
         except Exception:
             req = {}
+
+        parsed = urlparse(self.path)
+        path = parsed.path
+
+        # Endpoint API Geolocation Pelanggan & ODP
+        if path == "/api/geo/device":
+            res = save_geo_device_data(req)
+            self.send_json(res)
+            return
+
+        if path == "/api/geo/device/delete":
+            dev_id = req.get("_id") or req.get("id")
+            res = delete_geo_device_data(dev_id)
+            self.send_json(res)
+            return
+
+        if path == "/api/geo/odp":
+            res = save_geo_odp_data(req)
+            self.send_json(res)
+            return
+
+        if path == "/api/geo/odp/delete":
+            odp_id = req.get("_id") or req.get("id")
+            res = delete_geo_odp_data(odp_id)
+            self.send_json(res)
+            return
 
         # Public authentication endpoints
         if self.path == "/api/login":
