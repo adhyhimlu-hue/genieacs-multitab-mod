@@ -1100,76 +1100,74 @@ def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_ke
     txt = raw
     clean_txt = txt.lstrip("/!#").strip()
 
-    # Strip leading non-alphanumeric symbols / emojis
+    # Exact check for quick button presses (matches emoji + text variations)
+    btn_words = re.sub(r'[^a-zA-Z0-9\s]', ' ', clean_txt).strip().lower().split()
+    btn_phrase = " ".join(btn_words)
+
+    if btn_phrase in ("tambah set wan", "set wan"):
+        wan_guide = (
+            "🌐 *Tambah / Konfigurasi WAN PPPoE*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "Silakan gunakan perintah dengan format:\n"
+            "`addwan <sn_modem> <user_pppoe> <password_pppoe> [vlan_id]`\n\n"
+            "📌 *Contoh Tanpa VLAN:*\n"
+            "`addwan ZTEGC1234567 cucimotor 12345678`\n\n"
+            "📌 *Contoh Dengan VLAN:*\n"
+            "`addwan ZTEGC1234567 cucimotor 12345678 100`"
+        )
+        return (wan_guide, None)
+
+    if btn_phrase in ("reboot modem", "restart modem"):
+        return ("🔄 *Reboot Modem*: Silakan gunakan perintah:\n`reboot <username_pppoe/sn>`\n_Contoh:_ `reboot cucimotor`", None)
+
+    if btn_phrase in ("ubah wifi sandi", "ubah wifi", "wifi sandi"):
+        wifi_guide = (
+            "📶 *Ubah WiFi / Sandi Pelanggan*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "Silakan gunakan salah satu format perintah berikut:\n\n"
+            "• *Ubah Nama & Sandi:* `wifi <user> <nama_wifi_baru> <sandi_baru>`\n"
+            "  _Contoh:_ `wifi cucimotor Alijaya-Net 12345678`\n\n"
+            "• *Ubah Nama WiFi Saja:* `ssid <user> <nama_wifi_baru>`\n"
+            "  _Contoh:_ `ssid cucimotor Alijaya-Net`\n\n"
+            "• *Ubah Sandi WiFi Saja:* `pass <user> <sandi_baru>`\n"
+            "  _Contoh:_ `pass cucimotor 12345678`"
+        )
+        return (wifi_guide, None)
+
+    if btn_phrase in ("status server stb", "status server", "status stb", "server stb"):
+        return (get_server_stats(), get_main_menu_keyboard())
+
+    if btn_phrase in ("daftar klien wifi", "daftar klien", "klien wifi", "cek klien"):
+        return ("👥 *Daftar Klien Terhubung*: Silakan gunakan perintah:\n`klien <username_pppoe/sn>`\n_Contoh:_ `klien cucimotor`", None)
+
+    if btn_phrase in ("cek modem", "info modem"):
+        return ("🔍 *Cek Modem*: Silakan gunakan perintah:\n`cek <username_pppoe/sn>`\n_Contoh:_ `cek cucimotor`", None)
+
+    if btn_phrase in ("cek redaman kritis", "cek redaman", "redaman kritis"):
+        return (get_bad_rx_summary(), get_main_menu_keyboard())
+
+    if btn_phrase in ("modem belum setting", "modem belum"):
+        return (get_unconfigured_onts(), get_main_menu_keyboard())
+
+    # Standard command parsing (stripping leading emojis/symbols)
     norm_txt = re.sub(r'^[^\w\s]+', '', clean_txt).strip()
-    norm_lower = norm_txt.lower()
     parts = norm_txt.split(maxsplit=1)
     cmd = parts[0].lower() if parts else ""
     rest = parts[1].strip() if len(parts) > 1 else ""
 
-    # Check natural button / phrase aliases
-    if norm_lower.startswith("status server") or norm_lower in ["status", "server", "status stb", "status server stb"]:
-        cmd = "server"
-        rest = ""
-    elif norm_lower.startswith("bantuan") or norm_lower.startswith("help") or norm_lower in ["menu", "start", "bantuan / help", "bantuan/help"]:
+    # Normalization of aliases for typed text
+    if cmd in ["bantuan", "help", "menu", "start"] or btn_phrase in ("bantuan help", "bantuan", "help", "menu"):
         cmd = "menu"
         rest = ""
-    elif norm_lower.startswith("cek redaman") or norm_lower in ["redaman", "los", "redaman kritis", "cek redaman kritis"]:
-        cmd = "redaman"
+    elif cmd in ["server", "status"] and rest.lower() in ["", "server", "stb", "server stb"]:
+        cmd = "server"
         rest = ""
-    elif norm_lower.startswith("modem belum") or norm_lower in ["ontbaru", "unconf", "newont", "modem baru", "modem belum setting"]:
-        cmd = "ontbaru"
-        rest = ""
-    elif (norm_lower.startswith("tambah") and "wan" in norm_lower) or norm_lower.startswith("set wan") or norm_lower == "addwan":
-        if not rest or len(rest.split()) < 3:
-            wan_guide = (
-                "🌐 *Tambah / Konfigurasi WAN PPPoE*\n"
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                "Silakan gunakan perintah dengan format:\n"
-                "`addwan <sn_modem> <user_pppoe> <password_pppoe> [vlan_id]`\n\n"
-                "📌 *Contoh Tanpa VLAN:*\n"
-                "`addwan ZTEGC1234567 cucimotor 12345678`\n\n"
-                "📌 *Contoh Dengan VLAN:*\n"
-                "`addwan ZTEGC1234567 cucimotor 12345678 100`"
-            )
-            return (wan_guide, None)
-        else:
-            cmd = "addwan"
-    elif norm_lower.startswith("reboot") or norm_lower.startswith("restart"):
-        if rest.lower() in ["", "modem", "ont", "router"]:
-            return ("🔄 *Reboot Modem*: Silakan gunakan perintah:\n`reboot <username_pppoe/sn>`\n_Contoh:_ `reboot cucimotor`", None)
-        else:
-            cmd = "reboot"
-            if rest.lower().startswith("modem "):
-                rest = rest[6:].strip()
-    elif norm_lower.startswith("ubah wifi") or norm_lower.startswith("wifi / sandi") or norm_lower == "wifi":
-        if rest.lower() in ["", "/ sandi", "sandi", "modem"]:
-            wifi_guide = (
-                "📶 *Ubah WiFi / Sandi Pelanggan*\n"
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                "Silakan gunakan format perintah berikut:\n\n"
-                "• *Ubah Nama & Sandi:* `wifi <user> <nama_wifi_baru> <sandi_baru>`\n"
-                "  _Contoh:_ `wifi cucimotor Alijaya-Net 12345678`\n\n"
-                "• *Ubah Nama WiFi Saja:* `ssid <user> <nama_wifi_baru>`\n"
-                "  _Contoh:_ `ssid cucimotor Alijaya-Net`\n\n"
-                "• *Ubah Sandi WiFi Saja:* `pass <user> <sandi_baru>`\n"
-                "  _Contoh:_ `pass cucimotor 12345678`"
-            )
-            return (wifi_guide, None)
-    elif norm_lower.startswith("daftar klien") or norm_lower.startswith("cek klien") or norm_lower == "klien":
-        if rest.lower() in ["", "wifi", "hp", "terhubung", "modem"]:
-            return ("👥 *Daftar Klien Terhubung*: Silakan gunakan perintah:\n`klien <username_pppoe/sn>`\n_Contoh:_ `klien cucimotor`", None)
-        else:
-            cmd = "klien"
-            if rest.lower().startswith("wifi "):
-                rest = rest[5:].strip()
-    elif norm_lower.startswith("cek modem"):
-        if rest.lower() in ["", "modem", "ont"]:
-            return ("🔍 *Cek Modem*: Silakan gunakan perintah:\n`cek <username_pppoe/sn>`\n_Contoh:_ `cek cucimotor`", None)
-        else:
-            cmd = "cek"
-            if rest.lower().startswith("modem "):
-                rest = rest[5:].strip()
+    elif cmd == "reboot" and rest.lower().startswith("modem "):
+        rest = rest[6:].strip()
+    elif cmd == "klien" and rest.lower().startswith("wifi "):
+        rest = rest[5:].strip()
+    elif cmd == "cek" and rest.lower().startswith("modem "):
+        rest = rest[5:].strip()
 
     # 0. Resolusi Modem Pelanggan dari Tag Nomor WhatsApp Pengirim
     customer_dev = None
