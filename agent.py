@@ -2923,14 +2923,43 @@ def apply_system_update():
             os.chmod("/opt/genieacs-agent/whatsapp-bot.mjs", 0o755)
             log("  ✓ whatsapp-bot.mjs berhasil diperbarui.")
 
-        log("🎨 [3/5] Memeriksa & memperbarui antarmuka GenieACS...")
+        log("🎨 [3/5] Memeriksa & memperbarui antarmuka GenieACS & Peta ODP...")
         tar_file = os.path.join(repo_dir, "genieacs_ui_mod.tar.gz")
-        if os.path.exists(tar_file):
-            tar_cmd = subprocess.run(["tar", "-zxf", tar_file, "-C", "/usr/lib/node_modules/"], capture_output=True, text=True, timeout=30)
-            if tar_cmd.returncode == 0:
-                log("  ✓ genieacs_ui_mod.tar.gz berhasil diekstrak ke /usr/lib/node_modules/.")
-            else:
-                log(f"  ⚠️ Tar extract: {tar_cmd.stderr}")
+        for node_dir in ["/usr/lib/node_modules", "/usr/local/lib/node_modules"]:
+            genie_target = os.path.join(node_dir, "genieacs")
+            if os.path.exists(genie_target):
+                if os.path.exists(tar_file):
+                    tar_cmd = subprocess.run(["tar", "-zxf", tar_file, "-C", node_dir + "/"], capture_output=True, text=True, timeout=30)
+                    if tar_cmd.returncode == 0:
+                        log(f"  ✓ genieacs_ui_mod.tar.gz diekstrak ke {node_dir}/.")
+                pub = os.path.join(genie_target, "public")
+                if os.path.exists(pub):
+                    peta_src = os.path.join(repo_dir, "public", "peta.html")
+                    app_src = os.path.join(repo_dir, "public", "app.js")
+                    if os.path.exists(peta_src):
+                        shutil.copy2(peta_src, os.path.join(pub, "peta.html"))
+                        log("  ✓ peta.html berhasil diperbarui.")
+                    if os.path.exists(app_src):
+                        shutil.copy2(app_src, os.path.join(pub, "app.js"))
+                        log("  ✓ app.js berhasil diperbarui.")
+
+        # Update VirtualParameters (VlanID, pppoeUsername) & cache di MongoDB
+        try:
+            db = get_db()
+            if db is not None:
+                vp_vlan = db.virtualParameters.find_one({"_id": "VlanID"})
+                if not vp_vlan:
+                    vlan_script = 'let vlan = "-";\nlet p = declare("InternetGatewayDevice.WANDevice.1.WANConnectionDevice.*.WANPPPConnection.*.X_CT-COM_VlanID", {value: 1});\nif (p.value && p.value[0]) vlan = p.value[0];\nelse {\n  p = declare("InternetGatewayDevice.WANDevice.1.WANConnectionDevice.*.WANPPPConnection.*.X_CMCC_VLANIDMark", {value: 1});\n  if (p.value && p.value[0]) vlan = p.value[0];\n  else {\n    p = declare("InternetGatewayDevice.WANDevice.1.WANConnectionDevice.*.WANPPPConnection.*.X_HW_VLAN", {value: 1});\n    if (p.value && p.value[0]) vlan = p.value[0];\n    else {\n      p = declare("InternetGatewayDevice.WANDevice.1.WANConnectionDevice.*.WANPPPConnection.*.VLANID", {value: 1});\n      if (p.value && p.value[0]) vlan = p.value[0];\n    }\n  }\n}\nreturn {writable: true, value: [vlan, "xsd:string"]};'
+                    db.virtualParameters.insert_one({"_id": "VlanID", "script": vlan_script})
+                    log("  ✓ VirtualParameters.VlanID berhasil dibuat di MongoDB.")
+                vp_user = db.virtualParameters.find_one({"_id": "pppoeUsername"})
+                if vp_user and "writable: true" not in vp_user.get("script", ""):
+                    new_script = vp_user.get("script", "").replace("return {writable: false", "return {writable: true")
+                    db.virtualParameters.update_one({"_id": "pppoeUsername"}, {"$set": {"script": new_script}})
+                    log("  ✓ VirtualParameters.pppoeUsername disetel writable di MongoDB.")
+                db.config.delete_one({"_id": "ui-local-cache-hash"})
+        except Exception as e_db:
+            log(f"  ⚠️ MongoDB config update: {e_db}")
 
         log("🔄 [4/5] Me-restart service genieacs-ui...")
         subprocess.run(["systemctl", "restart", "genieacs-ui"], check=True, timeout=15)
