@@ -1037,8 +1037,34 @@
     let odpMarkers = {};    // odp_id -> L.marker
     let cablePolylines = []; // L.polyline
 
-    // API Base URL - works seamlessly via direct port 7558 or GenieACS /bot-proxy/
-    const API_BASE = window.location.pathname.startsWith('/bot-proxy') ? '/bot-proxy/api/geo' : '/api/geo';
+    // =========================================================================
+    // SMART API URL RESOLVER (PORT 3000 / BOT-PROXY / PORT 7558)
+    // =========================================================================
+    function resolveApiPath(path) {
+      const isProxy = window.location.port === '3000' || window.location.pathname.startsWith('/bot-proxy');
+      if (path.startsWith('/bot-proxy')) return path;
+      return isProxy ? `/bot-proxy${path}` : path;
+    }
+
+    async function apiFetch(path, options = {}) {
+      let resolvedUrl = resolveApiPath(path);
+      try {
+        let res = await fetch(resolvedUrl, options);
+        if (res.status === 404) {
+          let altUrl = resolvedUrl.startsWith('/bot-proxy')
+            ? resolvedUrl.replace(/^\/bot-proxy/, '')
+            : `/bot-proxy${resolvedUrl}`;
+          let altRes = await fetch(altUrl, options);
+          if (altRes.ok) return altRes;
+        }
+        return res;
+      } catch (err) {
+        let altUrl = resolvedUrl.startsWith('/bot-proxy')
+          ? resolvedUrl.replace(/^\/bot-proxy/, '')
+          : `/bot-proxy${resolvedUrl}`;
+        return await fetch(altUrl, options);
+      }
+    }
 
     // =========================================================================
     // INITIALIZE MAP & TILES
@@ -1104,8 +1130,8 @@
     async function loadAllData(showToastMsg = false) {
       try {
         const [devRes, odpRes] = await Promise.all([
-          fetch(`${API_BASE}/devices`),
-          fetch(`${API_BASE}/odps`)
+          apiFetch('/api/geo/devices'),
+          apiFetch('/api/geo/odps')
         ]);
 
         const devJson = await devRes.json();
@@ -1553,7 +1579,7 @@
       };
 
       try {
-        const res = await fetch(`${API_BASE}/device`, {
+        const res = await apiFetch('/api/geo/device', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -1577,7 +1603,7 @@
 
     async function saveDeviceLocationDirect(devId, name, lat, lng, odp, phone, address, notes) {
       try {
-        const res = await fetch(`${API_BASE}/device`, {
+        const res = await apiFetch('/api/geo/device', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1607,7 +1633,7 @@
       if (!confirm(`Yakin ingin menghapus titik peta pelanggan "${name}"?`)) return;
 
       try {
-        const res = await fetch(`${API_BASE}/device/delete`, {
+        const res = await apiFetch('/api/geo/device/delete', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ _id: devId })
@@ -1705,7 +1731,7 @@
       };
 
       try {
-        const res = await fetch(`${API_BASE}/odp`, {
+        const res = await apiFetch('/api/geo/odp', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -1729,7 +1755,7 @@
       if (!confirm(`Yakin ingin menghapus ODP ${odpId}? Kabel pelanggan yang terhubung ke ODP ini akan dilepas.`)) return;
 
       try {
-        const res = await fetch(`${API_BASE}/odp/delete`, {
+        const res = await apiFetch('/api/geo/odp/delete', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ _id: odpId })
@@ -1983,8 +2009,7 @@
       btn.disabled = true;
 
       try {
-        const wanApiUrl = window.location.pathname.startsWith('/bot-proxy') ? '/bot-proxy/api/wan/set' : '/api/wan/set';
-        const res = await fetch(wanApiUrl, {
+        const res = await apiFetch('/api/wan/set', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
