@@ -1140,7 +1140,7 @@
         if (devJson.success) {
           devicesData = devJson;
         }
-        if (odJson.success) {
+        if (odpJson && odpJson.success) {
           odpsData = odpJson.odps;
         }
 
@@ -1474,17 +1474,20 @@
     function populatePickerDropdowns() {
       // 1. Device dropdown
       const devSelect = document.getElementById('picker-device-select');
+      const currentVal = devSelect.value;
       devSelect.innerHTML = '<option value="">-- Pilih Pelanggan / Modem --</option>';
 
       // Unmapped first
       const unmapped = devicesData.unmapped || [];
       if (unmapped.length > 0) {
         const grp1 = document.createElement('optgroup');
-        grp1.label = `⭐ Belum Terpetakan (${unmapped.length})`;
+        grp1.label = `⭐ Belum Terpetakan (${unmapped.length} Modem)`;
         unmapped.forEach(d => {
           const opt = document.createElement('option');
           opt.value = d._id;
-          opt.innerText = `${d.pppoe || d.serial} (${d.product_class || 'ONT'})`;
+          const userStr = d.pppoe && d.pppoe !== '-' ? d.pppoe : (d.serial || d._id);
+          const modelStr = d.product_class || 'ONT';
+          opt.innerText = `${userStr} (${modelStr} • SN: ${d.serial || '-'})`;
           grp1.appendChild(opt);
         });
         devSelect.appendChild(grp1);
@@ -1494,25 +1497,34 @@
       const mapped = devicesData.mapped || [];
       if (mapped.length > 0) {
         const grp2 = document.createElement('optgroup');
-        grp2.label = `📍 Sudah Terpetakan (${mapped.length})`;
+        grp2.label = `📍 Sudah Terpetakan (${mapped.length} Pelanggan)`;
         mapped.forEach(d => {
           const opt = document.createElement('option');
           opt.value = d._id;
-          opt.innerText = `${d.name || d.pppoe} (${d.pppoe})`;
+          const userStr = d.name || d.pppoe || d.serial;
+          opt.innerText = `${userStr} (${d.pppoe || '-'} • SN: ${d.serial || '-'})`;
           grp2.appendChild(opt);
         });
         devSelect.appendChild(grp2);
       }
 
+      if (currentVal) {
+        devSelect.value = currentVal;
+      }
+
       // 2. ODP dropdown
       const odpSelect = document.getElementById('picker-odp-select');
+      const currentOdp = odpSelect.value;
       odpSelect.innerHTML = '<option value="">-- Tanpa ODP / Belum Tahu --</option>';
-      odpsData.forEach(o => {
+      (odpsData || []).forEach(o => {
         const opt = document.createElement('option');
         opt.value = o._id;
         opt.innerText = `${o.name || o._id} (${o.used_ports || 0}/${o.capacity} Port)`;
         odpSelect.appendChild(opt);
       });
+      if (currentOdp) {
+        odpSelect.value = currentOdp;
+      }
     }
 
     function onPickerDeviceChanged() {
@@ -1815,8 +1827,10 @@
 
     function quickMapDevice(devId) {
       closeUnmappedModal();
+      populatePickerDropdowns();
       togglePickerMode(true);
-      document.getElementById('picker-device-select').value = devId;
+      const sel = document.getElementById('picker-device-select');
+      sel.value = devId;
       onPickerDeviceChanged();
     }
 
