@@ -331,6 +331,79 @@ for mod in "cwmp" "nbi" "fs" "ui"; do
   chmod +x "/usr/bin/genieacs-${mod}" 2>/dev/null || true
 done
 
+# Pastikan proteksi reboot / mati listrik (Armbian Ramlog & tmpfs zram)
+mkdir -p /etc/tmpfiles.d
+cat << 'EOF' > /etc/tmpfiles.d/genieacs-mongodb.conf
+d /var/log/mongodb 0755 mongodb mongodb -
+d /run/mongodb 0755 mongodb mongodb -
+d /var/lib/mongodb 0755 mongodb mongodb -
+d /var/log/genieacs 0775 genieacs genieacs -
+d /opt/genieacs/ext 0775 genieacs genieacs -
+EOF
+systemd-tmpfiles --create /etc/tmpfiles.d/genieacs-mongodb.conf 2>/dev/null || true
+
+# Update service mongod dengan ExecStartPre & Restart=always jika file service ada
+if [ -f /lib/systemd/system/mongod.service ] || [ -f /etc/systemd/system/mongod.service ]; then
+  cat << 'EOF' > /lib/systemd/system/mongod.service
+[Unit]
+Description=MongoDB Database Server
+Documentation=https://docs.mongodb.org/manual
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=mongodb
+Group=mongodb
+EnvironmentFile=-/etc/default/mongod
+PermissionsStartOnly=true
+ExecStartPre=/usr/bin/install -d -m 0755 -o mongodb -g mongodb /var/log/mongodb /run/mongodb /var/lib/mongodb
+ExecStart=/usr/bin/mongod --config /etc/mongod.conf
+PIDFile=/run/mongodb/mongod.pid
+Restart=always
+RestartSec=3
+LimitFSIZE=infinity
+LimitCPU=infinity
+LimitAS=infinity
+LimitNOFILE=64000
+LimitNPROC=64000
+LimitMEMLOCK=infinity
+TasksMax=infinity
+TasksAccounting=false
+
+[Install]
+WantedBy=multi-user.target
+EOF
+fi
+
+# Update service GenieACS (cwmp, nbi, fs, ui) dengan ExecStartPre & Wants=mongod.service
+if [ -f /opt/genieacs/genieacs.env ]; then
+  for mod in "cwmp" "nbi" "fs" "ui"; do
+    cat << EOF > /etc/systemd/system/genieacs-${mod}.service
+[Unit]
+Description=GenieACS ${mod^^}
+After=network.target mongod.service
+Wants=mongod.service
+
+[Service]
+User=genieacs
+Group=genieacs
+EnvironmentFile=/opt/genieacs/genieacs.env
+PermissionsStartOnly=true
+ExecStartPre=/usr/bin/install -d -m 0775 -o genieacs -g genieacs /var/log/genieacs /opt/genieacs/ext
+ExecStart=/usr/bin/genieacs-${mod}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  done
+fi
+
+journalctl --vacuum-size=10M 2>/dev/null || true
+systemctl daemon-reload
+systemctl enable mongod genieacs-cwmp genieacs-nbi genieacs-fs genieacs-ui 2>/dev/null || true
+
 echo -e "${BLUE}[3/3] Merestart layanan GenieACS & Agent...${NC}"
 systemctl restart genieacs-ui genieacs-cwmp genieacs-nbi genieacs-fs genieacs-agent genieacs-whatsapp 2>/dev/null || {
   service genieacs-ui restart 2>/dev/null || true

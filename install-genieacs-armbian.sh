@@ -161,7 +161,18 @@ security:
   authorization: enabled
 EOF
 
-# Tulis file service systemd untuk mongod
+# Pastikan folder runtime & tmpfiles dibuat otomatis saat boot (Penting untuk Armbian Ramlog/zram)
+mkdir -p /etc/tmpfiles.d
+cat << 'EOF' > /etc/tmpfiles.d/genieacs-mongodb.conf
+d /var/log/mongodb 0755 mongodb mongodb -
+d /run/mongodb 0755 mongodb mongodb -
+d /var/lib/mongodb 0755 mongodb mongodb -
+d /var/log/genieacs 0775 genieacs genieacs -
+d /opt/genieacs/ext 0775 genieacs genieacs -
+EOF
+systemd-tmpfiles --create /etc/tmpfiles.d/genieacs-mongodb.conf 2>/dev/null || true
+
+# Tulis file service systemd untuk mongod dengan proteksi reboot/mati listrik
 cat << 'EOF' > /lib/systemd/system/mongod.service
 [Unit]
 Description=MongoDB Database Server
@@ -173,8 +184,12 @@ Wants=network-online.target
 User=mongodb
 Group=mongodb
 EnvironmentFile=-/etc/default/mongod
+PermissionsStartOnly=true
+ExecStartPre=/usr/bin/install -d -m 0755 -o mongodb -g mongodb /var/log/mongodb /run/mongodb /var/lib/mongodb
 ExecStart=/usr/bin/mongod --config /etc/mongod.conf
 PIDFile=/run/mongodb/mongod.pid
+Restart=always
+RestartSec=3
 LimitFSIZE=infinity
 LimitCPU=infinity
 LimitAS=infinity
@@ -468,17 +483,20 @@ for mod in "${MODULES[@]}"; do
 [Unit]
 Description=GenieACS ${mod^^}
 After=network.target mongod.service
+Wants=mongod.service
 
 [Service]
 User=genieacs
 Group=genieacs
 EnvironmentFile=/opt/genieacs/genieacs.env
+PermissionsStartOnly=true
+ExecStartPre=/usr/bin/install -d -m 0775 -o genieacs -g genieacs /var/log/genieacs /opt/genieacs/ext
 ExecStart=/usr/bin/genieacs-${mod}
 Restart=always
-RestartSec=3
+RestartSec=5
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target
 EOF
 done
 
