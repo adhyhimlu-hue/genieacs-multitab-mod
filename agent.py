@@ -18,7 +18,7 @@ import hmac
 import hashlib
 import base64
 import secrets
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 try:
@@ -915,6 +915,8 @@ def ask_gemini_ai(gemini_key, model_name, user_prompt, sender_id):
 # ==============================================================================
 
 def send_telegram(token, chat_id, text, parse_mode="Markdown", reply_markup=None):
+    if not text or not str(text).strip():
+        return
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {
         "chat_id": chat_id,
@@ -1097,9 +1099,77 @@ def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_ke
 
     txt = raw
     clean_txt = txt.lstrip("/!#").strip()
-    parts = clean_txt.split(maxsplit=1)
+
+    # Strip leading non-alphanumeric symbols / emojis
+    norm_txt = re.sub(r'^[^\w\s]+', '', clean_txt).strip()
+    norm_lower = norm_txt.lower()
+    parts = norm_txt.split(maxsplit=1)
     cmd = parts[0].lower() if parts else ""
     rest = parts[1].strip() if len(parts) > 1 else ""
+
+    # Check natural button / phrase aliases
+    if norm_lower.startswith("status server") or norm_lower in ["status", "server", "status stb", "status server stb"]:
+        cmd = "server"
+        rest = ""
+    elif norm_lower.startswith("bantuan") or norm_lower.startswith("help") or norm_lower in ["menu", "start", "bantuan / help", "bantuan/help"]:
+        cmd = "menu"
+        rest = ""
+    elif norm_lower.startswith("cek redaman") or norm_lower in ["redaman", "los", "redaman kritis", "cek redaman kritis"]:
+        cmd = "redaman"
+        rest = ""
+    elif norm_lower.startswith("modem belum") or norm_lower in ["ontbaru", "unconf", "newont", "modem baru", "modem belum setting"]:
+        cmd = "ontbaru"
+        rest = ""
+    elif (norm_lower.startswith("tambah") and "wan" in norm_lower) or norm_lower.startswith("set wan") or norm_lower == "addwan":
+        if not rest or len(rest.split()) < 3:
+            wan_guide = (
+                "🌐 *Tambah / Konfigurasi WAN PPPoE*\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "Silakan gunakan perintah dengan format:\n"
+                "`addwan <sn_modem> <user_pppoe> <password_pppoe> [vlan_id]`\n\n"
+                "📌 *Contoh Tanpa VLAN:*\n"
+                "`addwan ZTEGC1234567 cucimotor 12345678`\n\n"
+                "📌 *Contoh Dengan VLAN:*\n"
+                "`addwan ZTEGC1234567 cucimotor 12345678 100`"
+            )
+            return (wan_guide, None)
+        else:
+            cmd = "addwan"
+    elif norm_lower.startswith("reboot") or norm_lower.startswith("restart"):
+        if rest.lower() in ["", "modem", "ont", "router"]:
+            return ("🔄 *Reboot Modem*: Silakan gunakan perintah:\n`reboot <username_pppoe/sn>`\n_Contoh:_ `reboot cucimotor`", None)
+        else:
+            cmd = "reboot"
+            if rest.lower().startswith("modem "):
+                rest = rest[6:].strip()
+    elif norm_lower.startswith("ubah wifi") or norm_lower.startswith("wifi / sandi") or norm_lower == "wifi":
+        if rest.lower() in ["", "/ sandi", "sandi", "modem"]:
+            wifi_guide = (
+                "📶 *Ubah WiFi / Sandi Pelanggan*\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "Silakan gunakan format perintah berikut:\n\n"
+                "• *Ubah Nama & Sandi:* `wifi <user> <nama_wifi_baru> <sandi_baru>`\n"
+                "  _Contoh:_ `wifi cucimotor Alijaya-Net 12345678`\n\n"
+                "• *Ubah Nama WiFi Saja:* `ssid <user> <nama_wifi_baru>`\n"
+                "  _Contoh:_ `ssid cucimotor Alijaya-Net`\n\n"
+                "• *Ubah Sandi WiFi Saja:* `pass <user> <sandi_baru>`\n"
+                "  _Contoh:_ `pass cucimotor 12345678`"
+            )
+            return (wifi_guide, None)
+    elif norm_lower.startswith("daftar klien") or norm_lower.startswith("cek klien") or norm_lower == "klien":
+        if rest.lower() in ["", "wifi", "hp", "terhubung", "modem"]:
+            return ("👥 *Daftar Klien Terhubung*: Silakan gunakan perintah:\n`klien <username_pppoe/sn>`\n_Contoh:_ `klien cucimotor`", None)
+        else:
+            cmd = "klien"
+            if rest.lower().startswith("wifi "):
+                rest = rest[5:].strip()
+    elif norm_lower.startswith("cek modem"):
+        if rest.lower() in ["", "modem", "ont"]:
+            return ("🔍 *Cek Modem*: Silakan gunakan perintah:\n`cek <username_pppoe/sn>`\n_Contoh:_ `cek cucimotor`", None)
+        else:
+            cmd = "cek"
+            if rest.lower().startswith("modem "):
+                rest = rest[5:].strip()
 
     # 0. Resolusi Modem Pelanggan dari Tag Nomor WhatsApp Pengirim
     customer_dev = None
@@ -1179,7 +1249,7 @@ def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_ke
 
     # 4. Cek Server Stats
     if cmd in ["server", "status"]:
-        if not rest and is_admin:
+        if is_admin:
             return (get_server_stats(), get_main_menu_keyboard())
 
     # 5. Cek Modem / ONT Status
@@ -1484,9 +1554,10 @@ def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_ke
         )
 
     # 16. Fallback Gemini AI / Percakapan Cerdas
-    if gemini_key:
+    if gemini_key and is_valid_token(gemini_key):
         ai_reply = ask_gemini_ai(gemini_key, gemini_model, raw, sender_id)
-        return (ai_reply, None)
+        if ai_reply:
+            return (ai_reply, None)
 
     # Default if not understood
     if is_admin:
@@ -1499,25 +1570,86 @@ def handle_incoming_message(token, chat_id, user_text, gemini_key, model_name):
     txt = user_text.strip()
     state = USER_STATES.get(chat_id)
 
+    # Cancel command
+    if txt.lower() in ["/batal", "/cancel", "batal", "cancel"]:
+        USER_STATES.pop(chat_id, None)
+        send_telegram(token, chat_id, "✅ Operasi dibatalkan.", reply_markup=get_main_menu_keyboard())
+        return
+
     # Menu Buttons Handlers khusus Telegram
     if txt in ["🔍 Cek Modem"]:
         USER_STATES[chat_id] = {"action": "wait_cek"}
-        send_telegram(token, chat_id, "🔍 *Cek Modem*: Silakan ketik Username PPPoE atau Serial Number (contoh: `cucimotor`):")
+        send_telegram(token, chat_id, "🔍 *Cek Modem*: Silakan ketik Username PPPoE atau Serial Number (contoh: `cucimotor`):", reply_markup=get_main_menu_keyboard())
         return
 
     if txt in ["⚠️ Cek Redaman Kritis", "/redaman", "/los"]:
+        USER_STATES.pop(chat_id, None)
         send_telegram(token, chat_id, get_bad_rx_summary(), reply_markup=get_main_menu_keyboard())
         return
 
     if txt in ["🆕 Modem Belum Setting", "/ontbaru", "/unconf"]:
+        USER_STATES.pop(chat_id, None)
         send_telegram(token, chat_id, get_unconfigured_onts(), reply_markup=get_main_menu_keyboard())
         return
 
-    if txt in ["📊 Status Server", "/server", "/status"]:
+    if txt in ["📊 Status Server STB", "📊 Status Server", "/server", "/status", "status", "server"]:
+        USER_STATES.pop(chat_id, None)
         send_telegram(token, chat_id, get_server_stats(), reply_markup=get_main_menu_keyboard())
         return
 
-    # Check conversation state jika user mengklik tombol Cek Modem
+    if txt in ["❓ Bantuan / Help", "/help", "/menu", "/start", "menu", "help", "bantuan"]:
+        USER_STATES.pop(chat_id, None)
+        reply_text, markup = process_agent_command("menu", sender_id=chat_id, is_admin=True)
+        send_telegram(token, chat_id, reply_text, reply_markup=markup or get_main_menu_keyboard())
+        return
+
+    if txt in ["👥 Daftar Klien WiFi", "👥 Cek Klien", "/klien"]:
+        USER_STATES[chat_id] = {"action": "wait_klien"}
+        send_telegram(token, chat_id, "👥 *Daftar Klien Terhubung*: Silakan ketik Username PPPoE atau Serial Number (contoh: `cucimotor`):", reply_markup=get_main_menu_keyboard())
+        return
+
+    if txt in ["🔄 Reboot Modem", "/reboot"]:
+        USER_STATES[chat_id] = {"action": "wait_reboot"}
+        send_telegram(token, chat_id, "🔄 *Reboot Modem*: Silakan ketik Username PPPoE atau Serial Number modem yang ingin di-restart (contoh: `cucimotor`):", reply_markup=get_main_menu_keyboard())
+        return
+
+    if txt in ["🌐 Tambah / Set WAN", "/addwan"]:
+        USER_STATES[chat_id] = {"action": "wait_wan_add"}
+        wan_guide = (
+            "🌐 *Tambah / Konfigurasi WAN PPPoE*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "Silakan ketik data dengan format:\n"
+            "`<sn_modem> <user_pppoe> <password_pppoe> [vlan_id]`\n\n"
+            "📌 *Contoh Tanpa VLAN:*\n"
+            "`ZTEGC1234567 cucimotor 12345678`\n\n"
+            "📌 *Contoh Dengan VLAN:*\n"
+            "`ZTEGC1234567 cucimotor 12345678 100`\n\n"
+            "_(Ketik langsung format di atas untuk mengeksekusi)_"
+        )
+        send_telegram(token, chat_id, wan_guide, reply_markup=get_main_menu_keyboard())
+        return
+
+    if txt in ["📶 Ubah WiFi / Sandi", "/wifi"]:
+        USER_STATES.pop(chat_id, None)
+        wifi_guide = (
+            "📶 *Ubah Pengaturan WiFi Pelanggan*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "Silakan gunakan salah satu format perintah berikut:\n\n"
+            "1️⃣ *Ubah Nama & Sandi WiFi Sekaligus:*\n"
+            "`wifi <user_pppoe> <nama_wifi_baru> <sandi_baru>`\n"
+            "_Contoh:_ `wifi cucimotor Alijaya-Net 12345678`\n\n"
+            "2️⃣ *Ubah Nama WiFi (SSID) Saja:*\n"
+            "`ssid <user_pppoe> <nama_wifi_baru>`\n"
+            "_Contoh:_ `ssid cucimotor Alijaya-Net`\n\n"
+            "3️⃣ *Ubah Sandi WiFi Saja (min. 8 Karakter):*\n"
+            "`pass <user_pppoe> <sandi_baru>`\n"
+            "_Contoh:_ `pass cucimotor 12345678`\n\n"
+            "_(Atau ketik `/cek <user>` untuk mengubah tombol interaktif per perangkat)_"
+        )
+        send_telegram(token, chat_id, wifi_guide, reply_markup=get_main_menu_keyboard())
+        return
+
+    # Check conversation states jika ada aksi interaktif sebelumnya
     if state and state.get("action") == "wait_cek":
         USER_STATES.pop(chat_id, None)
         dev = find_device(txt)
@@ -1529,6 +1661,94 @@ def handle_incoming_message(token, chat_id, user_text, gemini_key, model_name):
         send_telegram(token, chat_id, summary_text, reply_markup=get_device_inline_keyboard(pppoe_user, dev_id, wifi_on))
         return
 
+    if state and state.get("action") == "wait_klien":
+        USER_STATES.pop(chat_id, None)
+        dev = find_device(txt)
+        if not dev:
+            send_telegram(token, chat_id, f"❌ Modem `{txt}` tidak ditemukan.", reply_markup=get_main_menu_keyboard())
+            return
+        send_telegram(token, chat_id, get_device_clients(dev), reply_markup=get_main_menu_keyboard())
+        return
+
+    if state and state.get("action") == "wait_reboot":
+        USER_STATES.pop(chat_id, None)
+        dev = find_device(txt)
+        if not dev:
+            send_telegram(token, chat_id, f"❌ Modem `{txt}` tidak ditemukan.", reply_markup=get_main_menu_keyboard())
+            return
+        ok, msg = reboot_device_task(dev)
+        send_telegram(token, chat_id, f"{'✅' if ok else '❌'} {msg}", reply_markup=get_main_menu_keyboard())
+        return
+
+    if state and state.get("action") == "wait_wan_add":
+        USER_STATES.pop(chat_id, None)
+        parts = txt.split()
+        if len(parts) >= 3:
+            target = parts[0]
+            pppoe_user = parts[1]
+            pppoe_pass = parts[2]
+            vlan_id = parts[3] if len(parts) > 3 else None
+            dev = find_device(target)
+            if not dev:
+                send_telegram(token, chat_id, f"❌ Modem `{target}` tidak ditemukan.", reply_markup=get_main_menu_keyboard())
+                return
+            ok, msg = add_or_set_wan_pppoe(dev, pppoe_user, pppoe_pass, vlan_id)
+            send_telegram(token, chat_id, f"{'✅' if ok else '❌'} {msg}", reply_markup=get_main_menu_keyboard())
+            return
+        else:
+            send_telegram(token, chat_id, "⚠️ Format salah. Harap ketik: `<sn_modem> <user_pppoe> <password_pppoe> [vlan_id]`", reply_markup=get_main_menu_keyboard())
+            return
+
+    if state and state.get("action") == "wait_ssid":
+        target = state.get("target")
+        USER_STATES.pop(chat_id, None)
+        dev = find_device(target)
+        if not dev:
+            send_telegram(token, chat_id, f"❌ Modem `{target}` tidak ditemukan.", reply_markup=get_main_menu_keyboard())
+            return
+        ok, msg = set_wifi_credentials(dev, new_ssid=txt)
+        if ok:
+            send_telegram(token, chat_id, f"✅ *Berhasil Mengubah SSID!*\n• Pelanggan: `{target}`\n• SSID Baru: `{txt}`", reply_markup=get_main_menu_keyboard())
+        else:
+            send_telegram(token, chat_id, f"❌ Gagal: {msg}", reply_markup=get_main_menu_keyboard())
+        return
+
+    if state and state.get("action") == "wait_pass":
+        target = state.get("target")
+        USER_STATES.pop(chat_id, None)
+        if len(txt) < 8:
+            send_telegram(token, chat_id, "⚠️ Sandi WiFi minimal harus 8 karakter.", reply_markup=get_main_menu_keyboard())
+            return
+        dev = find_device(target)
+        if not dev:
+            send_telegram(token, chat_id, f"❌ Modem `{target}` tidak ditemukan.", reply_markup=get_main_menu_keyboard())
+            return
+        ok, msg = set_wifi_credentials(dev, new_password=txt)
+        if ok:
+            send_telegram(token, chat_id, f"✅ *Berhasil Mengubah Sandi WiFi!*\n• Pelanggan: `{target}`\n• Sandi Baru: `{txt}`", reply_markup=get_main_menu_keyboard())
+        else:
+            send_telegram(token, chat_id, f"❌ Gagal: {msg}", reply_markup=get_main_menu_keyboard())
+        return
+
+    if state and state.get("action") == "wait_wan":
+        target = state.get("target")
+        USER_STATES.pop(chat_id, None)
+        parts = txt.split()
+        if len(parts) >= 2:
+            p_user = parts[0]
+            p_pass = parts[1]
+            p_vlan = parts[2] if len(parts) > 2 else None
+            dev = find_device(target)
+            if not dev:
+                send_telegram(token, chat_id, f"❌ Modem `{target}` tidak ditemukan.", reply_markup=get_main_menu_keyboard())
+                return
+            ok, msg = add_or_set_wan_pppoe(dev, p_user, p_pass, p_vlan)
+            send_telegram(token, chat_id, f"{'✅' if ok else '❌'} {msg}", reply_markup=get_main_menu_keyboard())
+            return
+        else:
+            send_telegram(token, chat_id, "⚠️ Format salah. Harap ketik: `<user_pppoe> <password_pppoe> [vlan_id]`", reply_markup=get_main_menu_keyboard())
+            return
+
     # Jalankan perintah melalui unified command processor
     reply_text, markup = process_agent_command(
         user_text=txt,
@@ -1537,7 +1757,8 @@ def handle_incoming_message(token, chat_id, user_text, gemini_key, model_name):
         gemini_key=gemini_key,
         gemini_model=model_name
     )
-    send_telegram(token, chat_id, reply_text, reply_markup=markup or get_main_menu_keyboard())
+    if reply_text:
+        send_telegram(token, chat_id, reply_text, reply_markup=markup or get_main_menu_keyboard())
 
 
 def check_proactive_alerts(token, admin_ids):
@@ -2616,7 +2837,9 @@ class BotConfigHandler(BaseHTTPRequestHandler):
     def is_authenticated_admin(self):
         client_ip = self.client_address[0] if self.client_address else ""
         # Localhost bypass specifically for bot internal webhook
-        if client_ip in ("127.0.0.1", "::1", "localhost") and self.path == "/api/agent_command":
+        parsed_path = urlparse(self.path).path
+        # Localhost bypass specifically for bot internal service-to-service communication
+        if client_ip in ("127.0.0.1", "::1", "localhost") and not self.headers.get("X-Forwarded-For") and parsed_path in ("/api/agent_command", "/api/config"):
             return True
 
         cookies = self.parse_cookies()
@@ -2767,10 +2990,17 @@ class BotConfigHandler(BaseHTTPRequestHandler):
             for k, v in configs_to_save.items():
                 db.config.update_one({"_id": k}, {"$set": {"value": v}}, upsert=True)
 
+            # Immediately update in-memory branding variables in agent.py
+            update_branding(get_config())
             try:
-                requests.post("http://127.0.0.1:7559/reload_admins", timeout=1.0)
-            except Exception:
-                pass
+                wa_payload = {
+                    "brand_name": BRAND_NAME,
+                    "brand_phone": BRAND_PHONE,
+                    "wa_admin_numbers": req.get("wa_admin_numbers", BRAND_PHONE).strip()
+                }
+                requests.post("http://127.0.0.1:7559/reload_admins", json=wa_payload, timeout=2.0)
+            except Exception as e:
+                logger.warning(f"Failed to notify WhatsApp service: {e}")
 
             logger.info("Konfigurasi bot berhasil disimpan melalui Web UI (Port 7558)!")
             self.send_json({"success": True, "message": "Konfigurasi berhasil disimpan"})

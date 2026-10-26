@@ -334,8 +334,8 @@ export async function fetchRemoteConfig() {
     const res = await fetch(`${AGENT_API_URL}/api/config`);
     if (res.ok) {
       const data = await res.json();
-      if (data.brand_name) cachedBrandName = data.brand_name;
-      if (data.brand_phone) cachedBrandPhone = data.brand_phone;
+      if (data.brand_name) cachedBrandName = String(data.brand_name).trim();
+      if (data.brand_phone) cachedBrandPhone = String(data.brand_phone).trim();
 
       const rawAdmins = data.wa_admin_numbers || data.brand_phone || '081947215703';
       const parsed = String(rawAdmins)
@@ -346,8 +346,13 @@ export async function fetchRemoteConfig() {
       if (parsed.length > 0) {
         cachedAdminNumbers = parsed;
       }
+      console.log(`[WA] Remote config synced: Brand='${cachedBrandName}', CS='${cachedBrandPhone}', Admins=[${cachedAdminNumbers.join(', ')}]`);
+    } else {
+      console.warn(`[WA] fetchRemoteConfig HTTP error: ${res.status}`);
     }
-  } catch (_) {}
+  } catch (err) {
+    console.warn('[WA] Could not fetch remote config from agent:', err.message);
+  }
 }
 
 export function loadWhatsappAdminSet() {
@@ -783,9 +788,35 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (pathname === '/reload_admins' && req.method === 'POST') {
-    await fetchRemoteConfig();
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: true, admins: cachedAdminNumbers }));
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        if (body) {
+          const payload = JSON.parse(body);
+          if (payload.brand_name) cachedBrandName = String(payload.brand_name).trim();
+          if (payload.brand_phone) cachedBrandPhone = String(payload.brand_phone).trim();
+          if (payload.wa_admin_numbers) {
+            const parsed = String(payload.wa_admin_numbers)
+              .split(/[\s,;]+/)
+              .map(n => n.trim().replace(/\D/g, ''))
+              .filter(n => n.length >= 8);
+            if (parsed.length > 0) cachedAdminNumbers = parsed;
+          }
+          console.log(`[WA] /reload_admins updated: Brand='${cachedBrandName}', CS='${cachedBrandPhone}', Admins=[${cachedAdminNumbers.join(', ')}]`);
+        }
+      } catch (err) {
+        console.error('[WA] Error reading /reload_admins body:', err);
+      }
+      await fetchRemoteConfig();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ 
+        success: true, 
+        brand_name: cachedBrandName, 
+        brand_phone: cachedBrandPhone, 
+        admins: cachedAdminNumbers 
+      }));
+    });
     return;
   }
 
