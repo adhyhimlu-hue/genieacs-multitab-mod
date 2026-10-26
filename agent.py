@@ -2787,6 +2787,15 @@ def apply_system_update():
             os.chmod("/usr/local/bin/set-bot", 0o755)
             log("  ✓ set-bot CLI berhasil diperbarui.")
 
+        src_wa = os.path.join(repo_dir, "whatsapp", "whatsapp-bot.mjs")
+        if not os.path.exists(src_wa):
+            src_wa = os.path.join(repo_dir, "whatsapp-bot.mjs")
+        if os.path.exists(src_wa):
+            import shutil
+            shutil.copy2(src_wa, "/opt/genieacs-agent/whatsapp-bot.mjs")
+            os.chmod("/opt/genieacs-agent/whatsapp-bot.mjs", 0o755)
+            log("  ✓ whatsapp-bot.mjs berhasil diperbarui.")
+
         log("🎨 [3/5] Memeriksa & memperbarui antarmuka GenieACS...")
         tar_file = os.path.join(repo_dir, "genieacs_ui_mod.tar.gz")
         if os.path.exists(tar_file):
