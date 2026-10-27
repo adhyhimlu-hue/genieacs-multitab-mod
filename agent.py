@@ -1159,16 +1159,14 @@ def fix_genieacs_issues():
                     except Exception:
                         pass
 
-    svcs = ["genieacs-ui", "genieacs-cwmp", "genieacs-nbi", "genieacs-fs"]
-    for s in svcs:
-        try:
-            subprocess.run(["systemctl", "restart", s], check=False, timeout=10)
-            logs.append(f"Restarted {s}")
-        except Exception as e:
-            logs.append(f"Restart error {s}: {e}")
+    try:
+        subprocess.run(["systemctl", "restart", "genieacs-ui", "genieacs-cwmp", "genieacs-nbi", "genieacs-fs"], check=False, timeout=30)
+        logs.append("Restarted genieacs-* services concurrently")
+    except Exception as e:
+        logs.append(f"Restart error: {e}")
 
     ui_ok = False
-    for _ in range(10):
+    for _ in range(12):
         time.sleep(1)
         if check_port_listening("127.0.0.1", 3000, timeout=1.0):
             ui_ok = True
