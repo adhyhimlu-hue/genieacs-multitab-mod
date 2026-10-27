@@ -256,7 +256,31 @@ def find_device_by_phone(phone_str):
     variations = get_phone_variations(phone_str)
     digits = re.sub(r"\D", "", str(phone_str))
     local = "0" + digits[2:] if digits.startswith("62") else digits
+    intl = "62" + digits[1:] if digits.startswith("0") else digits
+    plain = digits[1:] if digits.startswith("0") else (digits[2:] if digits.startswith("62") else digits)
 
+    # 1. Prioritas Utama: Cek di db.device_locations (Data No. HP Pelanggan dari Peta GenieACS)
+    loc_filters = [
+        {"phone": {"$in": variations}},
+        {"phone": local},
+        {"phone": intl},
+        {"phone": digits}
+    ]
+    if len(plain) >= 7:
+        loc_filters.append({"phone": {"$regex": re.escape(plain)}})
+
+    try:
+        loc = db.device_locations.find_one({"$or": loc_filters})
+        if loc and loc.get("_id"):
+            dev = find_device(loc.get("_id"))
+            if dev:
+                if loc.get("name"):
+                    dev["_custom_customer_name"] = loc.get("name")
+                return dev
+    except Exception as e:
+        logger.warning(f"Error querying device_locations by phone: {e}")
+
+    # 2. Prioritas Kedua: Cek tags pada db.devices
     dev = db.devices.find_one({
         "$or": [
             {"_tags": {"$in": variations}},
@@ -1291,13 +1315,38 @@ def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_ke
         cmd = "menu"
         rest = ""
     elif cmd in ["server", "status"] and rest.lower() in ["", "server", "stb", "server stb"]:
-        cmd = "server"
-        rest = ""
-    elif cmd == "reboot" and rest.lower().startswith("modem "):
-        rest = rest[6:].strip()
+        if is_admin:
+            cmd = "server"
+            rest = ""
+        else:
+            cmd = "cek"
+            rest = ""
+    elif cmd in ["restart", "reboot"]:
+        cmd = "reboot"
+        if rest.lower().startswith("modem"):
+            rest = rest[5:].strip()
+    elif cmd in ["cek", "status", "info", "sinyal", "koneksi"]:
+        if rest.lower() in ["koneksi", "sinyal", "wifi", "modem", "status", "internet", "kuota"]:
+            rest = ""
+        cmd = "cek"
+    elif cmd in ["ganti", "ubah"]:
+        sub = rest.split(maxsplit=1)
+        sub_type = sub[0].lower() if sub else ""
+        sub_val = sub[1] if len(sub) > 1 else ""
+        if sub_type in ["sandi", "password", "pass"]:
+            cmd = "pass"
+            rest = sub_val
+        elif sub_type in ["wifi", "ssid", "nama"]:
+            if sub_type == "nama" and sub_val.lower().startswith("wifi "):
+                sub_val = sub_val[5:].strip()
+            tokens = sub_val.split()
+            if len(tokens) >= 2 and sub_type == "wifi":
+                cmd = "wifi"
+                rest = sub_val
+            else:
+                cmd = "ssid"
+                rest = sub_val
     elif cmd == "klien" and rest.lower().startswith("wifi "):
-        rest = rest[5:].strip()
-    elif cmd == "cek" and rest.lower().startswith("modem "):
         rest = rest[5:].strip()
 
     # 0. Resolusi Modem Pelanggan dari Tag Nomor WhatsApp Pengirim
@@ -1338,8 +1387,10 @@ def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_ke
         else:
             if customer_dev:
                 pppoe_user = get_device_pppoe_username(customer_dev)
+                cust_name = customer_dev.get("_custom_customer_name") or ""
+                greeting_header = f" Halo Kak *{cust_name}*!" if cust_name else " Halo!"
                 cust_menu = (
-                    f"👋 *Halo! Layanan Mandiri WiFi {BRAND_NAME}*\n"
+                    f"👋 *{greeting_header} Layanan Mandiri WiFi {BRAND_NAME}*\n"
                     f"Modem Terdeteksi: *{pppoe_user}*\n"
                     "━━━━━━━━━━━━━━━━━━━━\n"
                     "Fitur yang dapat Anda gunakan:\n"
@@ -1418,7 +1469,11 @@ def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_ke
     # 7. Reboot ONT
     if cmd in ["reboot", "restart"]:
         target = rest or registered_tag
+        if not target and not is_admin and customer_dev:
+            target = customer_dev.get("_id")
         if not target:
+            if not is_admin:
+                return ("⚠️ Nomor WhatsApp Anda belum terhubung ke modem mana pun.", None)
             return ("⚠️ Gunakan: `reboot <username_pppoe/sn>`", None)
         dev = find_device(target)
         if not dev:
@@ -3170,6 +3225,16 @@ def save_geo_device_data(data):
     
     try:
         db.device_locations.update_one({"_id": dev_id}, {"$set": doc}, upsert=True)
+        # Jika ada nomor HP, tambahkan juga tag otomatis ke ONU di GenieACS
+        if doc.get("phone"):
+            raw_ph = doc.get("phone").strip()
+            digits = re.sub(r"\D", "", raw_ph)
+            if len(digits) >= 8:
+                add_device_tag(dev_id, raw_ph)
+                if digits.startswith("0"):
+                    add_device_tag(dev_id, "62" + digits[1:])
+                elif digits.startswith("62"):
+                    add_device_tag(dev_id, "0" + digits[2:])
         return {"success": True, "message": "Titik lokasi pelanggan berhasil disimpan", "data": doc}
     except Exception as e:
         logger.error(f"Error saving geo device {dev_id}: {e}", exc_info=True)
