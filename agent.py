@@ -2215,8 +2215,9 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
           <div class="hint">Dapatkan ID Anda dari @userinfobot. Bisa isi beberapa ID dipisah koma.</div>
         </div>
 
-        <div style="margin-top: 14px;">
+        <div style="margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap;">
           <button type="button" id="btnTest" class="btn-test">🧪 Tes Kirim Pesan Telegram</button>
+          <button type="submit" class="btn-save" style="flex: 1; padding: 11px 16px;">💾 Simpan Pengaturan Telegram</button>
         </div>
       </div>
 
@@ -2619,7 +2620,11 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
       .then(res => res.json())
       .then(res => {
         if (res.ok) {
-          showAlert('✅ Pesan tes Telegram berhasil terkirim ke ' + targetId + '!', true);
+          showAlert('✅ Pesan tes Telegram berhasil terkirim ke ' + targetId + '! Menyimpan pengaturan ke server...', true);
+          try {
+            const submitEvent = new Event('submit', { cancelable: true });
+            document.getElementById('botForm').dispatchEvent(submitEvent);
+          } catch (_) {}
         } else {
           showAlert('❌ Gagal kirim Telegram: ' + (res.description || 'Unknown error'), false);
         }
@@ -3762,6 +3767,13 @@ def main():
                 continue
                 
             if not notified_online:
+                try:
+                    logger.info("Memeriksa dan menonaktifkan webhook Telegram lama (jika ada)...")
+                    wh_res = requests.get(f"https://api.telegram.org/bot{token}/deleteWebhook?drop_pending_updates=False", timeout=8)
+                    if wh_res.status_code == 200:
+                        logger.info("Webhook Telegram berhasil dinonaktifkan (mode long polling aktif).")
+                except Exception as e:
+                    logger.warning(f"Gagal memeriksa/menghapus webhook: {e}")
                 register_bot_commands(token)
                 greeting = (
                     f"🚀 *{BRAND_NAME} GenieACS Bot Aktif!*\n"
@@ -3812,6 +3824,13 @@ def main():
                     if text:
                         logger.info(f"Received command: '{text}' from {sender_id}")
                         handle_incoming_message(token, sender_id, text, gemini_key, gemini_model)
+            elif r.status_code == 409:
+                logger.warning("Telegram polling returned HTTP 409 (Conflict/Webhook). Menghapus webhook lama secara otomatis...")
+                try:
+                    requests.get(f"https://api.telegram.org/bot{token}/deleteWebhook?drop_pending_updates=False", timeout=8)
+                except Exception:
+                    pass
+                time.sleep(3)
             else:
                 logger.warning(f"Telegram polling returned HTTP {r.status_code}")
                 time.sleep(5)
