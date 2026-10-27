@@ -12,6 +12,7 @@ import time
 import json
 import logging
 import subprocess
+import socket
 import requests
 import pymongo
 import hmac
@@ -1012,70 +1013,665 @@ def refresh_device_task(dev):
     except Exception as e:
         return False, f"Gagal menghubungi GenieACS NBI: {e}"
 
+# ==============================================================================
+# LINUX ARMBIAN & GENIEACS SYSTEM TOOLS (DEVOPS & SELF-HEALING ENGINE)
+# ==============================================================================
+
+FORBIDDEN_COMMANDS = ["rm -rf /", "mkfs", "dd if=", "> /dev/sd", "shutdown -h", ":(){ :|:& };:"]
+
+def check_port_listening(host="127.0.0.1", port=3000, timeout=1.0):
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(timeout)
+        s.connect((host, port))
+        s.close()
+        return True
+    except Exception:
+        return False
+
+def get_cpu_temp():
+    try:
+        with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
+            return round(float(f.read().strip()) / 1000.0, 1)
+    except Exception:
+        return None
+
+def diagnose_system():
+    cpu_temp = get_cpu_temp()
+
+    ram = {}
+    try:
+        r = subprocess.run(["free", "-m"], capture_output=True, text=True, timeout=5)
+        for line in r.stdout.splitlines():
+            if line.startswith("Mem:"):
+                parts = line.split()
+                tot = int(parts[1])
+                used = int(parts[2])
+                avail = int(parts[6]) if len(parts) > 6 else tot - used
+                ram = {
+                    "total_mb": tot,
+                    "used_mb": used,
+                    "available_mb": avail,
+                    "pct_used": round((used / tot) * 100, 1) if tot > 0 else 0
+                }
+    except Exception:
+        pass
+
+    disk = {}
+    try:
+        r = subprocess.run(["df", "-h", "/"], capture_output=True, text=True, timeout=5)
+        lines = r.stdout.strip().splitlines()
+        if len(lines) >= 2:
+            parts = lines[1].split()
+            disk = {"size": parts[1], "used": parts[2], "avail": parts[3], "use_pct": parts[4]}
+    except Exception:
+        pass
+
+    uptime_str = "N/A"
+    try:
+        uptime_str = subprocess.run(["uptime", "-p"], capture_output=True, text=True, timeout=3).stdout.strip()
+    except Exception:
+        pass
+
+    mongo_name = "mongod" if os.path.exists("/lib/systemd/system/mongod.service") or os.path.exists("/etc/systemd/system/mongod.service") else "mongodb"
+    svcs = ["genieacs-ui", "genieacs-cwmp", "genieacs-nbi", "genieacs-fs", "genieacs-agent", "genieacs-whatsapp", mongo_name]
+    svc_status = {}
+    for s in svcs:
+        try:
+            st = subprocess.run(["systemctl", "is-active", s], capture_output=True, text=True, timeout=3).stdout.strip()
+            svc_status[s] = st if st else "unknown"
+        except Exception:
+            svc_status[s] = "unknown"
+
+    ports = {
+        "ui_3000": check_port_listening("127.0.0.1", 3000),
+        "cwmp_7547": check_port_listening("127.0.0.1", 7547),
+        "nbi_7557": check_port_listening("127.0.0.1", 7557),
+        "fs_7567": check_port_listening("127.0.0.1", 7567),
+        "agent_7558": check_port_listening("127.0.0.1", 7558),
+        "whatsapp_7559": check_port_listening("127.0.0.1", 7559),
+        "mongodb_27017": check_port_listening("127.0.0.1", 27017)
+    }
+
+    return {
+        "cpu_temp_c": cpu_temp,
+        "ram": ram,
+        "disk": disk,
+        "uptime": uptime_str,
+        "services": svc_status,
+        "ports": ports
+    }
+
 def get_server_stats():
     try:
-        df_out = subprocess.check_output("df -h / | tail -n 1", shell=True).decode().split()
-        disk_used = f"{df_out[2]} / {df_out[1]} ({df_out[4]})"
-        free_out = subprocess.check_output("free -m | grep Mem:", shell=True).decode().split()
-        ram_used = f"{free_out[2]} MB / {free_out[1]} MB"
-        load_out = subprocess.check_output("uptime", shell=True).decode().strip()
-        temp_out = "N/A"
-        try:
-            temp_raw = subprocess.check_output("cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null", shell=True).decode().strip()
-            if temp_raw:
-                temp_out = f"{float(temp_raw)/1000:.1f} °C"
-        except Exception:
-            pass
+        d = diagnose_system()
+        temp_str = f"{d.get('cpu_temp_c')} °C" if d.get('cpu_temp_c') else "N/A"
+        ram = d.get("ram", {})
+        disk = d.get("disk", {})
+        svcs = d.get("services", {})
+        ports = d.get("ports", {})
+
+        ui_status = "🟢 Normal" if ports.get("ui_3000") and svcs.get("genieacs-ui") == "active" else "🔴 Down / Bermasalah"
+        cwmp_status = "🟢 Normal" if ports.get("cwmp_7547") and svcs.get("genieacs-cwmp") == "active" else "🔴 Down"
 
         return (
             "📊 *STATUS SERVER STB ARMBIAN*\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            f"• *RAM Terpakai*: `{ram_used}`\n"
-            f"• *Penyimpanan (eMMC/SD)*: `{disk_used}`\n"
-            f"• *Suhu CPU STB*: `{temp_out}`\n"
-            f"• *Uptime Server*: `{load_out.split('up ')[1].split(',')[0] if 'up ' in load_out else '-'}`\n"
+            f"• *RAM Terpakai*: `{ram.get('used_mb', 0)} MB / {ram.get('total_mb', 0)} MB ({ram.get('pct_used', 0)}%)`\n"
+            f"• *Penyimpanan*: `{disk.get('used', '-')} / {disk.get('size', '-')} ({disk.get('use_pct', '-')})`\n"
+            f"• *Suhu CPU STB*: `{temp_str}`\n"
+            f"• *Uptime Server*: `{d.get('uptime', '-')}`\n"
+            f"• *GenieACS Web UI (3000)*: {ui_status}\n"
+            f"• *GenieACS CWMP (7547)*: {cwmp_status}\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            "🟢 *GenieACS TR-069 & MongoDB: Normal*"
+            "💡 _Ketik pesan bebas kapan saja (contoh: 'benerin web', 'cek ip', 'ganti ip') untuk kelola server via AI._"
         )
     except Exception as e:
         return f"Gagal membaca status server: {e}"
 
+def fix_genieacs_issues():
+    logs = []
+    bin_dirs = [
+        "/usr/lib/node_modules/genieacs/bin",
+        "/usr/local/lib/node_modules/genieacs/bin",
+        "/opt/genieacs/bin"
+    ]
+    for bdir in bin_dirs:
+        if os.path.exists(bdir):
+            try:
+                for f in os.listdir(bdir):
+                    fp = os.path.join(bdir, f)
+                    if os.path.isfile(fp):
+                        st = os.stat(fp)
+                        os.chmod(fp, st.st_mode | 0o755)
+                logs.append(f"Fixed binary chmod +x in {bdir}")
+            except Exception as e:
+                logs.append(f"Chmod error {bdir}: {e}")
+
+    for p in ["/usr/bin", "/usr/local/bin"]:
+        if os.path.exists(p):
+            for fname in os.listdir(p):
+                if fname.startswith("genieacs-"):
+                    try:
+                        fp = os.path.join(p, fname)
+                        st = os.stat(fp)
+                        os.chmod(fp, st.st_mode | 0o755)
+                    except Exception:
+                        pass
+
+    svcs = ["genieacs-ui", "genieacs-cwmp", "genieacs-nbi", "genieacs-fs"]
+    for s in svcs:
+        try:
+            subprocess.run(["systemctl", "restart", s], check=False, timeout=10)
+            logs.append(f"Restarted {s}")
+        except Exception as e:
+            logs.append(f"Restart error {s}: {e}")
+
+    time.sleep(2)
+    ui_ok = check_port_listening("127.0.0.1", 3000, timeout=2.0)
+    return {
+        "success": ui_ok,
+        "ui_listening_port_3000": ui_ok,
+        "actions_taken": logs,
+        "message": "GenieACS Web UI berhasil dipulihkan dan aktif di port 3000!" if ui_ok else "Izin file diperbaiki dan service direstart, tapi port 3000 belum mendengarkan. Cek log service."
+    }
+
+def manage_system_service(service_name, action):
+    s_name = str(service_name or "").strip()
+    act = str(action or "").strip().lower()
+    if act not in ["start", "stop", "restart", "status", "reload"]:
+        return {"success": False, "error": f"Aksi '{act}' tidak valid. Gunakan: start, stop, restart, status."}
+
+    if s_name in ["mongodb", "mongo"]:
+        s_name = "mongod" if os.path.exists("/lib/systemd/system/mongod.service") or os.path.exists("/etc/systemd/system/mongod.service") else "mongodb"
+
+    try:
+        if act == "status":
+            r = subprocess.run(["systemctl", "status", s_name], capture_output=True, text=True, timeout=5)
+            return {"success": True, "service": s_name, "status_output": (r.stdout or r.stderr)[:1500]}
+        else:
+            r = subprocess.run(["systemctl", act, s_name], capture_output=True, text=True, timeout=15)
+            is_active = subprocess.run(["systemctl", "is-active", s_name], capture_output=True, text=True, timeout=3).stdout.strip()
+            return {
+                "success": r.returncode == 0,
+                "service": s_name,
+                "action": act,
+                "is_active": is_active,
+                "error": r.stderr if r.returncode != 0 else None
+            }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+def read_service_logs(service_name, lines=25):
+    s_name = str(service_name or "genieacs-ui").strip()
+    cnt = min(max(int(lines or 25), 5), 100)
+    try:
+        r = subprocess.run(["journalctl", "-u", s_name, "-n", str(cnt), "--no-pager"], capture_output=True, text=True, timeout=8)
+        out = (r.stdout or "").strip()
+        return {
+            "service": s_name,
+            "lines": cnt,
+            "logs": out if out else "(Log kosong atau service belum mencatat log)"
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+def get_active_connection_name(iface="eth0"):
+    try:
+        r = subprocess.run(["nmcli", "-t", "-f", "NAME,DEVICE", "con", "show", "--active"], capture_output=True, text=True, timeout=5)
+        for line in r.stdout.strip().splitlines():
+            parts = line.split(":")
+            if len(parts) >= 2 and parts[1] == iface:
+                return parts[0]
+    except Exception:
+        pass
+    try:
+        r = subprocess.run(["nmcli", "-t", "-f", "NAME", "con", "show"], capture_output=True, text=True, timeout=5)
+        lines = r.stdout.strip().splitlines()
+        if lines:
+            return lines[0]
+    except Exception:
+        pass
+    return "Wired connection 1"
+
+def manage_network(action="show", interface="eth0", ip=None, gateway=None, dns=None):
+    if action == "show":
+        ip_info = {}
+        try:
+            r = subprocess.run(["ip", "-4", "a"], capture_output=True, text=True, timeout=5)
+            ip_info["interfaces"] = r.stdout.strip()
+        except Exception as e:
+            ip_info["interfaces"] = str(e)
+        try:
+            r = subprocess.run(["ip", "route"], capture_output=True, text=True, timeout=5)
+            ip_info["routes"] = r.stdout.strip()
+        except Exception:
+            pass
+        try:
+            r = subprocess.run(["nmcli", "-t", "-f", "NAME,DEVICE,TYPE", "con", "show", "--active"], capture_output=True, text=True, timeout=5)
+            ip_info["nmcli_active"] = r.stdout.strip()
+        except Exception:
+            pass
+        return ip_info
+
+    elif action == "set_static":
+        if not ip:
+            return {"success": False, "error": "Parameter IP wajib diisi (contoh: 192.168.8.185/24)."}
+        if not gateway:
+            return {"success": False, "error": "Parameter Gateway wajib diisi (contoh: 192.168.8.1)."}
+
+        con_name = get_active_connection_name(interface)
+        dns_val = dns if dns else (gateway + ",8.8.8.8")
+
+        cmd = [
+            "nmcli", "con", "mod", con_name,
+            "ipv4.addresses", ip,
+            "ipv4.gateway", gateway,
+            "ipv4.dns", dns_val,
+            "ipv4.method", "manual"
+        ]
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            if r.returncode != 0:
+                return {"success": False, "error": r.stderr}
+            subprocess.run(["nmcli", "con", "up", con_name], capture_output=True, text=True, timeout=15)
+            return {
+                "success": True,
+                "connection": con_name,
+                "interface": interface,
+                "ip": ip,
+                "gateway": gateway,
+                "dns": dns_val,
+                "message": f"IP Statik berhasil disetel ke {ip} (Gateway: {gateway}, DNS: {dns_val}) pada koneksi '{con_name}'"
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    elif action == "set_dhcp":
+        con_name = get_active_connection_name(interface)
+        cmd = ["nmcli", "con", "mod", con_name, "ipv4.method", "auto"]
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            if r.returncode != 0:
+                return {"success": False, "error": r.stderr}
+            subprocess.run(["nmcli", "con", "up", con_name], capture_output=True, text=True, timeout=15)
+            return {
+                "success": True,
+                "connection": con_name,
+                "interface": interface,
+                "message": f"Koneksi '{con_name}' ({interface}) berhasil diatur ke mode DHCP otomatis."
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+def execute_linux_command(command):
+    cmd_str = str(command or "").strip()
+    if not cmd_str:
+        return {"success": False, "error": "Perintah kosong."}
+
+    for bad in FORBIDDEN_COMMANDS:
+        if bad in cmd_str:
+            return {"success": False, "error": f"Perintah '{bad}' dilarang demi keamanan sistem."}
+
+    try:
+        r = subprocess.run(cmd_str, shell=True, capture_output=True, text=True, timeout=15)
+        out = (r.stdout or "").strip()
+        err = (r.stderr or "").strip()
+        if len(out) > 2000:
+            out = out[:2000] + "\n... [Output dipotong]"
+        if len(err) > 1000:
+            err = err[:1000] + "\n... [Error dipotong]"
+        return {
+            "success": r.returncode == 0,
+            "returncode": r.returncode,
+            "stdout": out if out else "(tidak ada output)",
+            "stderr": err if err else None
+        }
+    except subprocess.TimeoutExpired:
+        return {"success": False, "error": "Waktu perintah habis (timeout 15 detik)."}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+AI_SERVER_TOOLS = [
+    {
+        "name": "diagnose_system",
+        "description": "Periksa status kesehatan lengkap server Linux Armbian (CPU temp, RAM, Disk, Uptime) dan semua layanan GenieACS (UI port 3000, CWMP 7547, NBI 7557, FS 7567, Agent, WhatsApp, MongoDB).",
+        "parameters": {"type": "OBJECT", "properties": {}}
+    },
+    {
+        "name": "fix_genieacs_issues",
+        "description": "Perbaiki otomatis masalah GenieACS UI tidak bisa dibuka (error 203/EXEC), perbaiki izin eksekusi chmod +x seluruh binary GenieACS, dan restart semua service GenieACS.",
+        "parameters": {"type": "OBJECT", "properties": {}}
+    },
+    {
+        "name": "manage_system_service",
+        "description": "Kelola layanan systemd pada Linux Armbian (start, stop, restart, status). Layanan umum: genieacs-ui, genieacs-cwmp, genieacs-nbi, genieacs-fs, genieacs-agent, genieacs-whatsapp, mongodb, networking, ssh.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "service_name": {
+                    "type": "STRING",
+                    "description": "Nama service systemd (contoh: genieacs-ui, mongodb, ssh)"
+                },
+                "action": {
+                    "type": "STRING",
+                    "description": "Aksi: restart, start, stop, atau status"
+                }
+            },
+            "required": ["service_name", "action"]
+        }
+    },
+    {
+        "name": "read_service_logs",
+        "description": "Membaca baris log journalctl terbaru dari suatu service untuk melihat penyebab crash/error (contoh: genieacs-ui, mongodb, genieacs-agent).",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "service_name": {
+                    "type": "STRING",
+                    "description": "Nama service (contoh: genieacs-ui)"
+                },
+                "lines": {
+                    "type": "INTEGER",
+                    "description": "Jumlah baris log terbaru (default 25)"
+                }
+            },
+            "required": ["service_name"]
+        }
+    },
+    {
+        "name": "manage_network",
+        "description": "Lihat atau atur konfigurasi jaringan Linux Armbian (IP address, Gateway, DNS, DHCP, atau IP Statik) menggunakan NetworkManager / nmcli.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {
+                    "type": "STRING",
+                    "description": "Pilihan aksi: 'show' (tampilkan info IP & interface), 'set_static' (atur IP statis), 'set_dhcp' (atur DHCP otomatis)"
+                },
+                "interface": {
+                    "type": "STRING",
+                    "description": "Nama interface jaringan (default: eth0)"
+                },
+                "ip": {
+                    "type": "STRING",
+                    "description": "Alamat IP statik dengan CIDR (contoh: 192.168.8.185/24). Wajib jika action='set_static'"
+                },
+                "gateway": {
+                    "type": "STRING",
+                    "description": "Alamat IP Gateway router (contoh: 192.168.8.1). Wajib jika action='set_static'"
+                },
+                "dns": {
+                    "type": "STRING",
+                    "description": "Alamat DNS server dipisahkan koma (contoh: 192.168.8.1,8.8.8.8)"
+                }
+            },
+            "required": ["action"]
+        }
+    },
+    {
+        "name": "execute_linux_command",
+        "description": "Jalankan perintah Linux terminal aman untuk melihat informasi sistem, paket, status jaringan, file config, atau diagnosa tingkat lanjut. Perintah berbahaya diblokir.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "command": {
+                    "type": "STRING",
+                    "description": "Perintah bash Linux yang ingin dijalankan (contoh: 'ping -c 3 8.8.8.8', 'cat /etc/resolv.conf', 'df -h', 'ps aux | grep node')"
+                }
+            },
+            "required": ["command"]
+        }
+    },
+    {
+        "name": "edit_genieacs_config",
+        "description": "Ubah konfigurasi GenieACS Bot di database (contoh: brand_name, brand_phone, wa_enabled, gemini_model).",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "key": {"type": "STRING", "description": "Nama konfigurasi"},
+                "value": {"type": "STRING", "description": "Nilai baru"}
+            },
+            "required": ["key", "value"]
+        }
+    },
+    {
+        "name": "update_system_git",
+        "description": "Jalankan pembaruan sistem GenieACS dari repository GitHub resmi (git pull, ekstrak update, set permission, dan restart service).",
+        "parameters": {"type": "OBJECT", "properties": {}}
+    }
+]
+
+def dispatch_ai_tool(name, args):
+    try:
+        if name == "diagnose_system":
+            return diagnose_system()
+        elif name == "fix_genieacs_issues":
+            return fix_genieacs_issues()
+        elif name == "manage_system_service":
+            return manage_system_service(args.get("service_name"), args.get("action"))
+        elif name == "read_service_logs":
+            return read_service_logs(args.get("service_name"), args.get("lines", 25))
+        elif name == "manage_network":
+            return manage_network(
+                action=args.get("action", "show"),
+                interface=args.get("interface", "eth0"),
+                ip=args.get("ip"),
+                gateway=args.get("gateway"),
+                dns=args.get("dns")
+            )
+        elif name == "execute_linux_command":
+            return execute_linux_command(args.get("command"))
+        elif name == "edit_genieacs_config":
+            db = get_db()
+            k = args.get("key")
+            v = args.get("value")
+            if db is not None and k and v is not None:
+                db.config.update_one({"_id": k}, {"$set": {"value": f'"{v}"' if not v.startswith('"') else v}}, upsert=True)
+                return {"success": True, "message": f"Config {k} berhasil diupdate ke {v}"}
+            return {"success": False, "error": "Database tidak terhubung atau parameter kosong"}
+        elif name == "update_system_git":
+            return apply_system_update()
+        else:
+            return {"error": f"Tool '{name}' tidak ditemukan."}
+    except Exception as e:
+        return {"error": str(e)}
+
+def fallback_admin_intent(raw):
+    text = raw.lower().strip()
+
+    # 1. Fix / Benerin GenieACS Web
+    if re.search(r'\b(benerin|perbaiki|fix|rusak|mati|down|203)\b.*\b(genieacs|web|ui|server)\b', text, re.I) or        re.search(r'\b(genieacs|web ui|ui)\b.*\b(mati|down|error|gak bisa|tidak bisa|benerin|perbaiki)\b', text, re.I):
+        res = fix_genieacs_issues()
+        if res.get("success"):
+            return "🛠️ *Perbaikan Otomatis GenieACS Berhasil!*\n\n"                    "• Izin binary (`chmod +x`) berhasil dipulihkan\n"                    "• Layanan GenieACS telah direstart\n"                    "• Port Web UI (3000): 🟢 *Aktif (HTTP OK)*\n\n"                    "Silakan coba buka kembali Web UI GenieACS Anda di browser!"
+        else:
+            return f"⚠️ *Hasil Perbaikan Otomatis:*\n`{json.dumps(res, indent=2)}`"
+
+    # 2. Diagnosa / Cek Server
+    if re.search(r'\b(cek|status|kondisi|kesehatan|suhu|ram|cpu|memory)\b.*\b(server|stb|sistem|os)\b', text, re.I) or        re.search(r'\b(server|stb)\b.*\b(cek|status|kondisi|sehat)\b', text, re.I):
+        d = diagnose_system()
+        temp_str = f"{d.get('cpu_temp_c')} °C" if d.get('cpu_temp_c') else "N/A"
+        ram = d.get("ram", {})
+        disk = d.get("disk", {})
+        svcs = d.get("services", {})
+        ports = d.get("ports", {})
+
+        svc_lines = "\n".join([f"  • {k}: `{'🟢 ' + v if v == 'active' else '🔴 ' + v}`" for k, v in svcs.items()])
+        port_lines = "\n".join([f"  • {k}: `{'🟢 Listening' if v else '🔴 Closed'}`" for k, v in ports.items()])
+
+        return (
+            f"📊 *Laporan Diagnosa Server Linux Armbian*\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"🌡️ *Suhu CPU:* `{temp_str}`\n"
+            f"🧠 *RAM:* `{ram.get('used_mb', 0)} MB / {ram.get('total_mb', 0)} MB ({ram.get('pct_used', 0)}%)`\n"
+            f"💾 *Penyimpanan:* `{disk.get('used', '-')} / {disk.get('size', '-')} ({disk.get('use_pct', '-')})`\n"
+            f"⏱️ *Uptime:* `{d.get('uptime', '-')}`\n\n"
+            f"⚙️ *Status Layanan:*\n{svc_lines}\n\n"
+            f"🔌 *Port Status:*\n{port_lines}"
+        )
+
+    # 3. Cek IP & Jaringan
+    if re.search(r'\b(cek|lihat|info|status)\b.*\b(ip|jaringan|network|ethernet)\b', text, re.I):
+        net = manage_network("show")
+        return (
+            f"🌐 *Informasi Jaringan Server STB:*\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"```\n{net.get('interfaces', '-')}\n```\n\n"
+            f"**Koneksi Aktif (NetworkManager):**\n`{net.get('nmcli_active', '-')}`"
+        )
+
+    # 4. Ganti IP Statik: misal 'set ip 192.168.8.185/24 gw 192.168.8.1'
+    m_ip = re.search(r'(?:set\s+ip|ip\s+statik|ganti\s+ip)\s+([0-9\.\/]+)(?:\s+(?:gw|gateway)\s+([0-9\.]+))?(?:\s+(?:dns)\s+([0-9\.\,]+))?', text, re.I)
+    if m_ip:
+        ip_val = m_ip.group(1)
+        if "/" not in ip_val:
+            ip_val += "/24"
+        gw_val = m_ip.group(2)
+        if not gw_val:
+            gw_parts = ip_val.split("/")[0].split(".")
+            gw_val = f"{gw_parts[0]}.{gw_parts[1]}.{gw_parts[2]}.1"
+        dns_val = m_ip.group(3) or f"{gw_val},8.8.8.8"
+        res = manage_network(action="set_static", ip=ip_val, gateway=gw_val, dns=dns_val)
+        if res.get("success"):
+            return f"✅ *IP Statik Berhasil Diatur:*\n\n• IP: `{ip_val}`\n• Gateway: `{gw_val}`\n• DNS: `{dns_val}`\n• Koneksi: `{res.get('connection')}`"
+        else:
+            return f"⚠️ *Gagal mengatur IP Statik:*\n{res.get('error')}"
+
+    # 5. Ganti ke DHCP: misal 'set dhcp' atau 'ip dhcp'
+    if re.search(r'\b(set\s+dhcp|ip\s+dhcp|mode\s+dhcp)\b', text, re.I):
+        res = manage_network(action="set_dhcp")
+        if res.get("success"):
+            return f"✅ *Mode Jaringan Diubah ke DHCP:*\n{res.get('message')}"
+        else:
+            return f"⚠️ *Gagal mengubah ke DHCP:*\n{res.get('error')}"
+
+    # 6. Restart Service: misal 'restart genieacs-ui', 'restart mongodb'
+    m_svc = re.search(r'\b(restart|start|stop)\s+(?:service\s+)?([a-zA-Z0-9\-_]+)\b', text, re.I)
+    if m_svc and m_svc.group(1).lower() in ["restart", "start", "stop"]:
+        act = m_svc.group(1).lower()
+        svc_name = m_svc.group(2).lower()
+        if svc_name not in ["modem", "ont"]:
+            res = manage_system_service(svc_name, act)
+            if res.get("success"):
+                return f"⚙️ *Layanan `{svc_name}` berhasil di-{act}!*\n• Status saat ini: `{res.get('is_active')}`"
+            else:
+                return f"⚠️ *Gagal me-{act} layanan `{svc_name}`:*\n{res.get('error')}"
+
+    # 7. Eksekusi Command Terminal: misal 'cmd ping -c 3 8.8.8.8' atau 'sh uptime'
+    m_cmd = re.search(r'^(?:cmd|sh|bash|exec)\s+(.+)$', raw.strip(), re.I)
+    if m_cmd:
+        c_str = m_cmd.group(1).strip()
+        res = execute_linux_command(c_str)
+        return (
+            f"🖥️ *Eksekusi Terminal:* `{c_str}`\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"**Exit Code:** `{res.get('returncode')}`\n"
+            f"```\n{res.get('stdout')}\n```"
+            + (f"\n**Error:**\n```\n{res.get('stderr')}\n```" if res.get('stderr') else "")
+        )
+
+    # 8. Update Sistem / Git Pull
+    if re.search(r'\b(update|pull)\b.*\b(sistem|server|bot|git)\b', text, re.I):
+        res = apply_system_update()
+        return f"🚀 *Update Sistem Selesai:*\n\n• Pesan: {res.get('message')}\n• Restart: {res.get('restarted')}"
+
+    return None
+
 # ==============================================================================
-# GEMINI AI ASSISTANT FALLBACK
+# GEMINI AI ASSISTANT (CONVERSATIONAL DEVOPS & TR-069 AGENT)
 # ==============================================================================
 
-def ask_gemini_ai(gemini_key, model_name, user_prompt, sender_id):
+def ask_gemini_ai(gemini_key, model_name, user_prompt, sender_id="admin", is_admin=False):
     if not is_valid_token(gemini_key):
+        if is_admin:
+            return fallback_admin_intent(user_prompt)
         return None
+
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={gemini_key}"
     headers = {"Content-Type": "application/json"}
+    
     system_instruction = (
-        f"Anda adalah Asisten AI Resmi dari {BRAND_NAME} untuk Manajemen TR-069 GenieACS RT/RW Net.\n"
+        f"Anda adalah Asisten AI Senior DevOps Linux Armbian & TR-069 GenieACS Resmi dari {BRAND_NAME}.\n"
         f"Kontak CS/WhatsApp: {BRAND_PHONE}.\n"
-        "Bantu teknisi lapangan menjawab pertanyaan teknis secara singkat, ramah, dan profesional seputar "
-        "modem ONT (ZTE, Huawei, Fiberhome, GM220-S), redaman optik (standar bagus -14 s/d -24 dBm), "
-        "koneksi PPPoE, WiFi, atau cara menggunakan perintah bot ini (/cek, /redaman, /ontbaru, /klien, /addwan, /wifioff, /wifion, /reboot)."
+        "Anda memiliki hak akses root penuh untuk mengelola server STB Armbian ini.\n"
+        "Anda dapat menggunakan tools untuk mendiagnosa server, memperbaiki izin file (chmod +x) GenieACS, "
+        "me-restart service, mengatur IP statik / DHCP melalui NetworkManager (nmcli), membaca log, dan menjalankan perintah Linux.\n"
+        "Gunakan tools secara proaktif ketika admin meminta bantuan teknis seputar server atau jaringan.\n"
+        "Selalu berikan penjelasan hasil kerja Anda secara ramah, sopan, ringkas, dan jelas dalam bahasa Indonesia."
     )
-    payload = {
-        "contents": [
-            {
-                "parts": [
-                    {"text": f"{system_instruction}\n\nPertanyaan teknisi: {user_prompt}"}
-                ]
+
+    contents = [
+        {
+            "role": "user",
+            "parts": [{"text": user_prompt}]
+        }
+    ]
+
+    for turn in range(4):
+        payload = {
+            "contents": contents,
+            "system_instruction": {
+                "parts": [{"text": system_instruction}]
             }
-        ]
-    }
-    try:
-        r = requests.post(url, headers=headers, json=payload, timeout=12)
-        if r.status_code == 200:
+        }
+        if is_admin:
+            payload["tools"] = [{"function_declarations": AI_SERVER_TOOLS}]
+
+        try:
+            r = requests.post(url, headers=headers, json=payload, timeout=25)
+            if r.status_code != 200:
+                logger.warning(f"Gemini API status {r.status_code}: {r.text[:200]}")
+                break
+
             data = r.json()
             candidates = data.get("candidates", [])
-            if candidates:
-                parts = candidates[0].get("content", {}).get("parts", [])
-                if parts:
-                    return parts[0].get("text", "").strip()
-    except Exception as e:
-        logger.warning(f"Gemini API request failed: {e}")
+            if not candidates:
+                break
+
+            content_obj = candidates[0].get("content", {})
+            parts = content_obj.get("parts", [])
+            if not parts:
+                break
+
+            func_call = None
+            text_reply = ""
+            for p in parts:
+                if "functionCall" in p:
+                    func_call = p["functionCall"]
+                if "text" in p:
+                    text_reply += p["text"]
+
+            if not func_call:
+                return text_reply.strip()
+
+            fn_name = func_call.get("name")
+            fn_args = func_call.get("args", {})
+            logger.info(f"AI Tool Call: {fn_name}({fn_args})")
+
+            tool_result = dispatch_ai_tool(fn_name, fn_args)
+
+            contents.append({
+                "role": "model",
+                "parts": [{"functionCall": func_call}]
+            })
+            contents.append({
+                "role": "user",
+                "parts": [
+                    {
+                        "functionResponse": {
+                            "name": fn_name,
+                            "response": {"name": fn_name, "content": tool_result}
+                        }
+                    }
+                ]
+            })
+        except Exception as e:
+            logger.warning(f"Gemini Tool Execution error: {e}")
+            break
+
+    if is_admin:
+        return fallback_admin_intent(user_prompt)
     return None
 
 # ==============================================================================
@@ -1750,11 +2346,21 @@ def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_ke
             None
         )
 
-    # 16. Fallback Gemini AI / Percakapan Cerdas
-    if gemini_key and is_valid_token(gemini_key):
-        ai_reply = ask_gemini_ai(gemini_key, gemini_model, raw, sender_id)
-        if ai_reply:
-            return (ai_reply, None)
+    # 16. Fallback Gemini AI / Percakapan Cerdas & DevOps Self-Healing
+    if is_admin:
+        if gemini_key and is_valid_token(gemini_key):
+            ai_reply = ask_gemini_ai(gemini_key, gemini_model, raw, sender_id, is_admin=True)
+            if ai_reply:
+                return (ai_reply, None)
+        # Fallback heuristic jika tanpa API key atau AI selesai tanpa teks
+        fallback_rep = fallback_admin_intent(raw)
+        if fallback_rep:
+            return (fallback_rep, None)
+    else:
+        if gemini_key and is_valid_token(gemini_key):
+            ai_reply = ask_gemini_ai(gemini_key, gemini_model, raw, sender_id, is_admin=False)
+            if ai_reply:
+                return (ai_reply, None)
 
     # Default if not understood
     if is_admin:
