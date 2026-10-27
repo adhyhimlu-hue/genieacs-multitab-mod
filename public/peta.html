@@ -546,19 +546,42 @@
 
     .rx-badge-pill {
       position: absolute;
-      top: -30px;
+      top: -32px;
       left: 50%;
       transform: translateX(-50%);
-      background: rgba(15, 23, 42, 0.95);
+      background: rgba(15, 23, 42, 0.94);
       color: #fff;
-      font-size: 10px;
+      font-size: 10.5px;
       font-weight: 700;
-      padding: 2px 6px;
-      border-radius: 10px;
+      padding: 2.5px 8px;
+      border-radius: 12px;
       border: 1px solid currentColor;
       white-space: nowrap;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+      box-shadow: 0 3px 10px rgba(0,0,0,0.5);
       pointer-events: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      max-width: 240px;
+    }
+
+    .pill-name {
+      color: #f8fafc;
+      font-weight: 700;
+      max-width: 110px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .pill-divider {
+      color: rgba(148, 163, 184, 0.6);
+      font-weight: 700;
+    }
+
+    .pill-rx {
+      font-weight: 800;
+      white-space: nowrap;
     }
 
     /* MARKER THEMES */
@@ -1392,6 +1415,8 @@
         }
 
         const rxLabel = dev.online ? (dev.rx_val !== null ? `${dev.rx_val} dBm` : 'Online') : 'OFF';
+        const clientName = dev.name || dev.pppoe || dev.serial || 'Pelanggan';
+        const shortName = clientName.length > 18 ? clientName.substring(0, 16) + '..' : clientName;
 
         const clientIcon = L.divIcon({
           className: `custom-client-marker ${statusClass}`,
@@ -1399,7 +1424,11 @@
           iconAnchor: [16, 16],
           popupAnchor: [0, -24],
           html: `
-            <div class="rx-badge-pill">${rxLabel}</div>
+            <div class="rx-badge-pill" title="${clientName} (${rxLabel})">
+              <span class="pill-name">${shortName}</span>
+              <span class="pill-divider">•</span>
+              <span class="pill-rx">${rxLabel}</span>
+            </div>
             <div class="marker-pin">
               <span class="marker-icon-inner">🏠</span>
             </div>
@@ -1724,8 +1753,9 @@
           const opt = document.createElement('option');
           opt.value = d._id;
           const userStr = d.pppoe && d.pppoe !== '-' ? d.pppoe : (d.serial || d._id);
-          const modelStr = d.product_class || 'ONT';
-          opt.innerText = `${userStr} (${modelStr} • SN: ${d.serial || '-'})`;
+          const rxStr = d.rx_val !== null ? `${d.rx_val} dBm` : (d.online ? 'Online' : 'Offline');
+          const rxIcon = d.online ? (d.rx_status === 'normal' ? '🟢' : (d.rx_status === 'warning' ? '🟡' : '🔴')) : '⚪';
+          opt.innerText = `${rxIcon} ${userStr} | Rx: ${rxStr} (SN: ${d.serial || '-'})`;
           grp1.appendChild(opt);
         });
         devSelect.appendChild(grp1);
@@ -1740,7 +1770,9 @@
           const opt = document.createElement('option');
           opt.value = d._id;
           const userStr = d.name || d.pppoe || d.serial;
-          opt.innerText = `${userStr} (${d.pppoe || '-'} • SN: ${d.serial || '-'})`;
+          const rxStr = d.rx_val !== null ? `${d.rx_val} dBm` : (d.online ? 'Online' : 'Offline');
+          const rxIcon = d.online ? (d.rx_status === 'normal' ? '🟢' : (d.rx_status === 'warning' ? '🟡' : '🔴')) : '⚪';
+          opt.innerText = `${rxIcon} ${userStr} | Rx: ${rxStr} (${d.pppoe || '-'})`;
           grp2.appendChild(opt);
         });
         devSelect.appendChild(grp2);
@@ -1791,6 +1823,13 @@
           if (pickerMarker) {
             pickerMarker.setLatLng([d.lat, d.lng]);
             updatePickerCoords(d.lat, d.lng);
+            if (pickerMarker._icon) {
+              const tip = pickerMarker._icon.querySelector('.picker-pin-tooltip');
+              if (tip) {
+                const rxStr = d.rx_val !== null ? `${d.rx_val} dBm` : (d.online ? 'Online' : 'Offline');
+                tip.innerText = `📌 ${d.name || d.pppoe || 'Pelanggan'} (${rxStr})`;
+              }
+            }
           }
           map.setView([d.lat, d.lng], 18, { animate: true });
         }
