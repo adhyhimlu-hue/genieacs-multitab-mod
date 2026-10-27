@@ -297,6 +297,20 @@
       border: 3px solid #fff;
     }
 
+    .odp-picker-pin-head {
+      width: 44px;
+      height: 44px;
+      background: linear-gradient(135deg, #0284c7, #0369a1);
+      border-radius: 50% 50% 50% 0;
+      transform: rotate(-45deg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 8px 20px rgba(2, 132, 199, 0.65);
+      border: 3px solid #fff;
+      transition: background 0.3s ease;
+    }
+
     .picker-pin-icon {
       transform: rotate(45deg);
       font-size: 20px;
@@ -328,6 +342,23 @@
       box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
     }
 
+    .odp-picker-pin-tooltip {
+      position: absolute;
+      top: -26px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid #38bdf8;
+      color: #38bdf8;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 6px;
+      white-space: nowrap;
+      pointer-events: none;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+    }
+
     @keyframes pinBounce {
       0%, 100% { transform: translateY(0); }
       50% { transform: translateY(-12px); }
@@ -339,7 +370,7 @@
     }
 
     /* TOP-RIGHT DOCKED TOOLBAR (NEVER BLOCKS MAP CENTER OR ROOFTOPS) */
-    #picker-toolbar {
+    #picker-toolbar, #odp-picker-toolbar {
       position: absolute;
       top: 14px;
       right: 14px;
@@ -360,7 +391,11 @@
       transition: all 0.25s ease;
     }
 
-    #picker-toolbar.minimized {
+    #odp-picker-toolbar {
+      border-color: rgba(2, 132, 199, 0.5);
+    }
+
+    #picker-toolbar.minimized, #odp-picker-toolbar.minimized {
       width: auto;
       max-width: 90vw;
       padding: 8px 12px;
@@ -375,7 +410,8 @@
       padding-bottom: 8px;
     }
 
-    #picker-toolbar.minimized .picker-toolbar-header {
+    #picker-toolbar.minimized .picker-toolbar-header,
+    #odp-picker-toolbar.minimized .picker-toolbar-header {
       border-bottom: none;
       padding-bottom: 0;
     }
@@ -438,7 +474,7 @@
     }
 
     @media (max-width: 768px) {
-      #picker-toolbar {
+      #picker-toolbar, #odp-picker-toolbar {
         top: auto;
         bottom: 12px;
         right: 12px;
@@ -842,7 +878,7 @@
       .search-wrapper { max-width: 100%; order: 3; width: 100%; margin-top: 6px; }
       .stats-container { order: 2; width: 100%; overflow-x: auto; padding-bottom: 4px; }
       .actions-group { order: 1; }
-      #picker-toolbar { width: 95%; bottom: 12px; padding: 12px; }
+      #picker-toolbar, #odp-picker-toolbar { width: 95%; bottom: 12px; padding: 12px; }
       .form-row { grid-template-columns: 1fr; }
     }
     /* ANIMATED FLOWING FIBER OPTIC CABLES */
@@ -925,11 +961,14 @@
 
     <!-- ACTION BUTTONS -->
     <div class="actions-group">
-      <button class="btn btn-primary" onclick="togglePickerMode()" id="btn-picker">
-        <span>📍</span> <span id="btn-picker-text">Pasang Titik (Picker)</span>
+      <button class="btn btn-primary" onclick="togglePickerMode()" id="btn-picker" title="Pasang atau geser posisi pelanggan / modem">
+        <span>📍</span> <span id="btn-picker-text">Pasang Klien</span>
       </button>
-      <button class="btn btn-outline" onclick="openOdpModal()">
-        <span>📦</span> <span>Kelola ODP</span>
+      <button class="btn btn-outline" onclick="toggleOdpPickerMode()" id="btn-odp-picker" title="Pasang atau geser posisi titik tiang ODP">
+        <span>📦</span> <span id="btn-odp-picker-text">Pasang ODP</span>
+      </button>
+      <button class="btn btn-outline" onclick="openOdpModal()" title="Buka daftar dan manajemen ODP">
+        <span>📋</span> <span>Kelola ODP</span>
       </button>
       <button class="btn btn-outline" onclick="openUnmappedModal()" id="btn-unmapped">
         <span>📋</span> <span>Klien Baru (<span id="count-unmapped">0</span>)</span>
@@ -949,7 +988,7 @@
 
     <!-- FLOATING HINT BANNER -->
     <div id="picker-hint-banner">
-      <span>📍 <b>Klik peta</b> atau <b>tarik pin merah</b> tepat ke atap rumah pelanggan</span>
+      <span id="picker-hint-text">📍 <b>Klik peta</b> atau <b>tarik pin merah</b> tepat ke atap rumah pelanggan</span>
     </div>
 
     <!-- DOCKED PICKER TOOLBAR (TOP-RIGHT, NEVER COVERS MAP CENTER) -->
@@ -1032,31 +1071,65 @@
         </div>
       </div>
     </div>
-  </main>
 
-  <!-- ODP MANAGEMENT MODAL -->
-  <div id="odp-modal" class="modal-overlay">
-    <div class="modal-card">
-      <div class="modal-header">
-        <span>📦 Kelola Titik ODP (Optical Distribution Point)</span>
-        <button class="close-modal" onclick="closeOdpModal()">✕</button>
+    <!-- DOCKED ODP PICKER TOOLBAR (TOP-RIGHT, NEVER COVERS MAP CENTER) -->
+    <div id="odp-picker-toolbar">
+      <div class="picker-toolbar-header">
+        <div class="picker-title" style="color: #38bdf8;">
+          <span>📦 Petakan / Pasang Titik ODP</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <button type="button" class="btn-tool-icon" onclick="toggleOdpPickerFormMinimize()" id="btn-minimize-odp-picker" title="Sembunyikan / Tampilkan Form">
+            <span id="minimize-odp-icon">🔽</span>
+          </button>
+          <button type="button" class="btn-tool-icon" onclick="toggleOdpPickerMode(false)" title="Tutup Picker">
+            ✕
+          </button>
+        </div>
       </div>
-      <div class="modal-body">
+
+      <!-- MINIMIZED STRIP (Shown only when minimized) -->
+      <div id="odp-picker-minimized-strip" style="display: none; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px;">
+        <span class="picker-coords" id="odp-picker-coords-min-display">-7.000000, 110.000000</span>
+        <div style="display: flex; gap: 6px;">
+          <button class="btn btn-outline" style="padding: 3px 8px; font-size: 11px;" type="button" onclick="toggleOdpPickerFormMinimize()">
+            🔼 Form
+          </button>
+          <button class="btn-save" style="padding: 3px 10px; font-size: 11px; background: #0284c7;" type="button" onclick="saveOdpPickerData()">
+            💾 Simpan
+          </button>
+        </div>
+      </div>
+
+      <!-- FULL FORM BODY -->
+      <div id="odp-picker-form-body" style="display: flex; flex-direction: column; gap: 10px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 2px;">
+          <span style="font-size: 11px; color: var(--text-muted);">Titik Pin ODP:</span>
+          <span class="picker-coords" id="odp-picker-coords-display">-7.000000, 110.000000</span>
+        </div>
+
+        <div class="form-group">
+          <label>Target ODP</label>
+          <select id="odp-picker-select" class="form-control" onchange="onOdpPickerSelectChanged()">
+            <option value="">➕ Buat Titik ODP Baru</option>
+          </select>
+        </div>
+
         <div class="form-row">
           <div class="form-group">
-            <label>ID ODP (Contoh: ODP-ALJ-01)</label>
-            <input type="text" id="odp-id" class="form-control" placeholder="ODP-ALJ-01">
+            <label>ID ODP</label>
+            <input type="text" id="odp-picker-id" class="form-control" placeholder="Contoh: ODP-ALJ-01" oninput="updateOdpPickerTooltip()">
           </div>
           <div class="form-group">
             <label>Nama / Label ODP</label>
-            <input type="text" id="odp-name" class="form-control" placeholder="ODP Pasar Baru">
+            <input type="text" id="odp-picker-name" class="form-control" placeholder="ODP Pasar Baru" oninput="updateOdpPickerTooltip()">
           </div>
         </div>
 
         <div class="form-row">
           <div class="form-group">
             <label>Kapasitas Port</label>
-            <select id="odp-capacity" class="form-control">
+            <select id="odp-picker-capacity" class="form-control">
               <option value="8">8 Port (Standar)</option>
               <option value="16">16 Port</option>
               <option value="24">24 Port</option>
@@ -1064,8 +1137,8 @@
             </select>
           </div>
           <div class="form-group">
-            <label>Warna Garis Kabel & Box</label>
-            <select id="odp-color" class="form-control">
+            <label>Warna Garis & Box</label>
+            <select id="odp-picker-color" class="form-control" onchange="updateOdpPickerPinColor()">
               <option value="#0284c7">🔵 Biru (Default)</option>
               <option value="#10b981">🟢 Hijau</option>
               <option value="#f59e0b">🟡 Kuning / Oranye</option>
@@ -1076,36 +1149,54 @@
           </div>
         </div>
 
-        <div class="form-row">
-          <div class="form-group">
-            <label>Latitude</label>
-            <input type="text" id="odp-lat" class="form-control" placeholder="-7.xxxxxx">
-          </div>
-          <div class="form-group">
-            <label>Longitude</label>
-            <input type="text" id="odp-lng" class="form-control" placeholder="110.xxxxxx">
-          </div>
-        </div>
-
         <div class="form-group">
           <label>Catatan Tiang / Lokasi</label>
-          <input type="text" id="odp-notes" class="form-control" placeholder="Di tiang PLN depan warung Bu Siti">
+          <input type="text" id="odp-picker-notes" class="form-control" placeholder="Di tiang PLN depan ruko Pak Joko">
         </div>
 
-        <div style="display: flex; gap: 8px;">
-          <button class="btn btn-outline" type="button" onclick="setOdpCoordsFromMapCenter()" style="flex: 1;">
-            <span>📍 Ambil Titik Tengah Peta</span>
+        <div class="picker-actions">
+          <button class="btn btn-outline" type="button" onclick="goToMyLocationOdp()" title="Jadikan titik GPS ponsel Anda saat ini">
+            <span>🎯 GPS</span>
           </button>
-          <button class="btn btn-primary" type="button" onclick="saveOdpData()" style="flex: 1;">
+          <button class="btn-save" style="background: #0284c7;" type="button" onclick="saveOdpPickerData()">
             <span>💾 Simpan ODP</span>
           </button>
+          <button class="btn-cancel" type="button" onclick="toggleOdpPickerMode(false)">
+            <span>Batal</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ODP MANAGEMENT MODAL -->
+  <div id="odp-modal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <span>📦 Kelola Titik ODP (Optical Distribution Point)</span>
+        <button class="close-modal" onclick="closeOdpModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="background: rgba(2, 132, 199, 0.12); border: 1px solid rgba(2, 132, 199, 0.4); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <b style="color: #38bdf8; font-size: 13px;">📍 Pasang ODP Interaktif (Picker di Peta)</b>
+            <span style="font-size: 11px; background: rgba(2, 132, 199, 0.25); color: #38bdf8; padding: 2px 8px; border-radius: 4px; font-weight: 600;">Anti Tertutup Popup</span>
+          </div>
+          <p style="font-size: 12px; color: var(--text-muted); margin: 0; line-height: 1.4;">
+            Gunakan mode picker untuk menggeser pin box langsung ke tiang pada peta secara leluasa tanpa terhalang jendela popup.
+          </p>
+          <button class="btn btn-primary" type="button" onclick="closeOdpModal(); toggleOdpPickerMode(true);" style="background: #0284c7; justify-content: center; padding: 9px; font-weight: 700; gap: 8px;">
+            <span>➕ Pasang Titik ODP Baru di Peta</span>
+          </button>
         </div>
 
-        <hr style="border-color: var(--card-border); margin: 6px 0;">
-
         <div>
-          <label style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Daftar ODP Terdaftar</label>
-          <div id="odp-list-container" style="max-height: 180px; overflow-y: auto; margin-top: 6px; display: flex; flex-direction: column; gap: 6px;"></div>
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+            <label style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Daftar ODP Terdaftar</label>
+            <span style="font-size: 11px; color: #38bdf8;" id="odp-count-label">0 ODP</span>
+          </div>
+          <input type="text" id="search-odp-input" class="form-control" placeholder="Cari nama atau ID ODP..." oninput="filterOdpList()" style="margin-bottom: 8px;">
+          <div id="odp-list-container" style="max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;"></div>
         </div>
       </div>
       <div class="modal-footer">
@@ -1192,6 +1283,13 @@
     let currentPickerLat = null;
     let currentPickerLng = null;
     let isPickerMinimized = false;
+
+    // ODP PICKER INTERACTIVE STATE
+    let isOdpPickerMode = false;
+    let odpPickerMarker = null;
+    let currentOdpPickerLat = null;
+    let currentOdpPickerLng = null;
+    let isOdpPickerMinimized = false;
     let showCables = true;
     let currentFilter = 'all';
 
@@ -1282,7 +1380,10 @@
 
       // Map click listener: click anywhere on map in Picker Mode to place/move the pin
       map.on('click', function (e) {
-        if (isPickerMode && pickerMarker) {
+        if (isOdpPickerMode && odpPickerMarker) {
+          odpPickerMarker.setLatLng(e.latlng);
+          updateOdpPickerCoords(e.latlng.lat, e.latlng.lng);
+        } else if (isPickerMode && pickerMarker) {
           pickerMarker.setLatLng(e.latlng);
           updatePickerCoords(e.latlng.lat, e.latlng.lng);
         }
@@ -1312,6 +1413,7 @@
         updateStatsCounters();
         renderAllMarkers();
         populatePickerDropdowns();
+        populateOdpPickerDropdown();
         renderOdpList();
         renderUnmappedList();
 
@@ -1614,6 +1716,9 @@
           <a href="${googleMapsUrl}" target="_blank" class="btn-route">
             <span>🚗 Rute ke Tiang ODP</span>
           </a>
+          <button class="btn-popup-sm" style="grid-column: span 2; background: #0284c7; color: #fff; font-weight: 700; border: none; padding: 7px;" onclick="editOdpPosition('${odp._id}')">
+            <span>✏️ Geser Posisi ODP</span>
+          </button>
           <button class="btn-popup-sm" onclick="openAddClientToOdp('${odp._id}')">
             <span>➕ Klien ke ODP ini</span>
           </button>
@@ -1660,14 +1765,23 @@
     function togglePickerMode(forceState) {
       isPickerMode = forceState !== undefined ? forceState : !isPickerMode;
 
+      // Tutup ODP picker jika sedang aktif
+      if (isPickerMode && isOdpPickerMode) {
+        toggleOdpPickerMode(false);
+      }
+
       const toolbar = document.getElementById('picker-toolbar');
       const hint = document.getElementById('picker-hint-banner');
+      const hintText = document.getElementById('picker-hint-text');
       const btnPicker = document.getElementById('btn-picker');
       const btnText = document.getElementById('btn-picker-text');
 
       if (isPickerMode) {
         toolbar.style.display = 'flex';
-        if (hint) hint.style.display = 'block';
+        if (hint) {
+          hint.style.display = 'block';
+          if (hintText) hintText.innerHTML = '📍 <b>Klik peta</b> atau <b>tarik pin merah</b> tepat ke atap rumah pelanggan';
+        }
         btnPicker.classList.add('btn-outline');
         btnPicker.classList.remove('btn-primary');
         btnText.innerText = 'Tutup Picker';
@@ -1726,10 +1840,10 @@
         populatePickerDropdowns();
       } else {
         toolbar.style.display = 'none';
-        if (hint) hint.style.display = 'none';
+        if (hint && !isOdpPickerMode) hint.style.display = 'none';
         btnPicker.classList.remove('btn-outline');
         btnPicker.classList.add('btn-primary');
-        btnText.innerText = 'Pasang Titik (Picker)';
+        btnText.innerText = 'Pasang Klien';
 
         if (pickerMarker) {
           map.removeLayer(pickerMarker);
@@ -1960,22 +2074,29 @@
     // =========================================================================
     function openOdpModal() {
       document.getElementById('odp-modal').style.display = 'flex';
-      setOdpCoordsFromMapCenter();
+      renderOdpList();
     }
 
     function closeOdpModal() {
       document.getElementById('odp-modal').style.display = 'none';
     }
 
-    function setOdpCoordsFromMapCenter() {
-      const c = map.getCenter();
-      document.getElementById('odp-lat').value = c.lat.toFixed(6);
-      document.getElementById('odp-lng').value = c.lng.toFixed(6);
+    function filterOdpList() {
+      const q = (document.getElementById('search-odp-input').value || '').trim().toLowerCase();
+      const items = document.querySelectorAll('#odp-list-container > div');
+      items.forEach(el => {
+        const text = el.innerText.toLowerCase();
+        el.style.display = text.includes(q) ? 'flex' : 'none';
+      });
     }
 
     function renderOdpList() {
       const c = document.getElementById('odp-list-container');
+      if (!c) return;
       c.innerHTML = '';
+
+      const countLabel = document.getElementById('odp-count-label');
+      if (countLabel) countLabel.innerText = `${odpsData.length} ODP`;
 
       if (odpsData.length === 0) {
         c.innerHTML = '<div style="font-size: 12px; color: var(--text-muted);">Belum ada ODP terdaftar.</div>';
@@ -1988,10 +2109,11 @@
         div.innerHTML = `
           <div>
             <b style="color: ${o.color || '#38bdf8'};">${o.name || o._id}</b>
-            <div style="font-size: 11px; color: var(--text-muted);">${o.used_ports}/${o.capacity} Port Terpakai ${o.notes ? `• ${o.notes}` : ''}</div>
+            <div style="font-size: 11px; color: var(--text-muted);">${o.used_ports || 0}/${o.capacity || 8} Port Terpakai ${o.notes ? `• ${o.notes}` : ''}</div>
           </div>
           <div style="display: flex; gap: 6px;">
             <button class="btn btn-outline" style="padding: 4px 8px; font-size: 11px;" onclick="focusOdp('${o._id}')">📍 Lihat</button>
+            <button class="btn btn-outline" style="padding: 4px 8px; font-size: 11px; color: #38bdf8;" onclick="closeOdpModal(); toggleOdpPickerMode(true, '${o._id}');">✏️ Geser</button>
             <button class="btn btn-outline" style="padding: 4px 8px; font-size: 11px; color: #ef4444;" onclick="deleteOdp('${o._id}')">🗑️</button>
           </div>
         `;
@@ -2010,17 +2132,285 @@
       }
     }
 
-    async function saveOdpData() {
-      const id = document.getElementById('odp-id').value.trim();
-      const name = document.getElementById('odp-name').value.trim();
-      const cap = document.getElementById('odp-capacity').value;
-      const color = document.getElementById('odp-color').value;
-      const lat = parseFloat(document.getElementById('odp-lat').value);
-      const lng = parseFloat(document.getElementById('odp-lng').value);
-      const notes = document.getElementById('odp-notes').value.trim();
+    function editOdpPosition(odpId) {
+      map.closePopup();
+      toggleOdpPickerMode(true, odpId);
+    }
+
+    // =========================================================================
+    // INTERACTIVE ODP PICKER (DRAGGABLE PIN, DOCKED TOOLBAR, ANTI-BLOCKING)
+    // =========================================================================
+    function toggleOdpPickerFormMinimize() {
+      isOdpPickerMinimized = !isOdpPickerMinimized;
+      const toolbar = document.getElementById('odp-picker-toolbar');
+      const formBody = document.getElementById('odp-picker-form-body');
+      const minStrip = document.getElementById('odp-picker-minimized-strip');
+      const minIcon = document.getElementById('minimize-odp-icon');
+
+      if (isOdpPickerMinimized) {
+        toolbar.classList.add('minimized');
+        formBody.style.display = 'none';
+        minStrip.style.display = 'flex';
+        if (minIcon) minIcon.innerText = '🔼';
+      } else {
+        toolbar.classList.remove('minimized');
+        formBody.style.display = 'flex';
+        minStrip.style.display = 'none';
+        if (minIcon) minIcon.innerText = '🔽';
+      }
+    }
+
+    function updateOdpPickerCoords(lat, lng) {
+      currentOdpPickerLat = lat;
+      currentOdpPickerLng = lng;
+      const latStr = lat.toFixed(6);
+      const lngStr = lng.toFixed(6);
+      const str = `${latStr}, ${lngStr}`;
+      const el1 = document.getElementById('odp-picker-coords-display');
+      const el2 = document.getElementById('odp-picker-coords-min-display');
+      if (el1) el1.innerText = str;
+      if (el2) el2.innerText = str;
+    }
+
+    function getOdpPickerLabel() {
+      const name = document.getElementById('odp-picker-name').value.trim();
+      const id = document.getElementById('odp-picker-id').value.trim();
+      return name || id || 'Tiang ODP Baru';
+    }
+
+    function createOdpPickerDivIcon(color, label) {
+      return L.divIcon({
+        className: 'leaflet-picker-pin',
+        html: `
+          <div class="picker-marker-container">
+            <div class="picker-pin-wrapper">
+              <div class="odp-picker-pin-head" style="background: linear-gradient(135deg, ${color}, #0f172a); border-color: #fff;">
+                <span class="picker-pin-icon">📦</span>
+              </div>
+              <div class="picker-ground-shadow"></div>
+            </div>
+            <div class="odp-picker-pin-tooltip" id="odp-picker-pin-tooltip">${label || 'Titik Tiang ODP'}</div>
+          </div>
+        `,
+        iconSize: [44, 54],
+        iconAnchor: [22, 54]
+      });
+    }
+
+    function updateOdpPickerPinColor() {
+      if (!odpPickerMarker) return;
+      const color = document.getElementById('odp-picker-color').value || '#0284c7';
+      const label = getOdpPickerLabel();
+      odpPickerMarker.setIcon(createOdpPickerDivIcon(color, label));
+    }
+
+    function updateOdpPickerTooltip() {
+      const tip = document.getElementById('odp-picker-pin-tooltip');
+      if (tip) tip.innerText = getOdpPickerLabel();
+    }
+
+    function populateOdpPickerDropdown() {
+      const select = document.getElementById('odp-picker-select');
+      if (!select) return;
+      const currentVal = select.value;
+      select.innerHTML = '<option value="">➕ Buat Titik ODP Baru</option>';
+
+      if (odpsData && odpsData.length > 0) {
+        const grp = document.createElement('optgroup');
+        grp.label = `Daftar ODP Terdaftar (${odpsData.length} Titik)`;
+        odpsData.forEach(o => {
+          const opt = document.createElement('option');
+          opt.value = o._id;
+          opt.innerText = `📦 ${o.name || o._id} (${o.used_ports || 0}/${o.capacity || 8} Port)`;
+          grp.appendChild(opt);
+        });
+        select.appendChild(grp);
+      }
+      select.value = currentVal;
+    }
+
+    function onOdpPickerSelectChanged() {
+      const selVal = document.getElementById('odp-picker-select').value;
+      if (!selVal) {
+        resetOdpPickerForm();
+        return;
+      }
+
+      const o = (odpsData || []).find(x => x._id === selVal);
+      if (o) {
+        document.getElementById('odp-picker-id').value = o._id;
+        document.getElementById('odp-picker-id').readOnly = true;
+        document.getElementById('odp-picker-name').value = o.name || o._id;
+        document.getElementById('odp-picker-capacity').value = `${o.capacity || 8}`;
+        document.getElementById('odp-picker-color').value = o.color || '#0284c7';
+        document.getElementById('odp-picker-notes').value = o.notes || '';
+
+        if (o.lat && o.lng) {
+          updateOdpPickerCoords(o.lat, o.lng);
+          if (odpPickerMarker) {
+            odpPickerMarker.setLatLng([o.lat, o.lng]);
+          }
+          map.setView([o.lat, o.lng], 18, { animate: true });
+        }
+        updateOdpPickerPinColor();
+        updateOdpPickerTooltip();
+      }
+    }
+
+    function resetOdpPickerForm() {
+      document.getElementById('odp-picker-select').value = '';
+      document.getElementById('odp-picker-id').readOnly = false;
+      
+      const count = (odpsData ? odpsData.length : 0) + 1;
+      const padded = count < 10 ? `0${count}` : `${count}`;
+      document.getElementById('odp-picker-id').value = `ODP-ALJ-${padded}`;
+      document.getElementById('odp-picker-name').value = '';
+      document.getElementById('odp-picker-capacity').value = '8';
+      document.getElementById('odp-picker-color').value = '#0284c7';
+      document.getElementById('odp-picker-notes').value = '';
+
+      const center = map.getCenter();
+      updateOdpPickerCoords(center.lat, center.lng);
+      if (odpPickerMarker) {
+        odpPickerMarker.setLatLng(center);
+        updateOdpPickerPinColor();
+        updateOdpPickerTooltip();
+      }
+    }
+
+    function toggleOdpPickerMode(forceState, targetOdpId) {
+      isOdpPickerMode = forceState !== undefined ? forceState : !isOdpPickerMode;
+
+      // Tutup client picker jika sedang aktif
+      if (isOdpPickerMode && isPickerMode) {
+        togglePickerMode(false);
+      }
+
+      const toolbar = document.getElementById('odp-picker-toolbar');
+      const hint = document.getElementById('picker-hint-banner');
+      const hintText = document.getElementById('picker-hint-text');
+      const btnOdpPicker = document.getElementById('btn-odp-picker');
+      const btnText = document.getElementById('btn-odp-picker-text');
+
+      if (isOdpPickerMode) {
+        toolbar.style.display = 'flex';
+        if (hint) {
+          hint.style.display = 'block';
+          if (hintText) hintText.innerHTML = '📦 <b>Klik peta</b> atau <b>tarik pin box</b> tepat ke tiang ODP';
+        }
+        if (btnOdpPicker) {
+          btnOdpPicker.classList.add('btn-primary');
+          btnOdpPicker.classList.remove('btn-outline');
+        }
+        if (btnText) btnText.innerText = 'Tutup Picker ODP';
+
+        populateOdpPickerDropdown();
+
+        if (targetOdpId) {
+          document.getElementById('odp-picker-select').value = targetOdpId;
+          onOdpPickerSelectChanged();
+        } else {
+          if (!document.getElementById('odp-picker-select').value) {
+            resetOdpPickerForm();
+          }
+        }
+
+        let startPos = map.getCenter();
+        if (currentOdpPickerLat && currentOdpPickerLng) {
+          startPos = L.latLng(currentOdpPickerLat, currentOdpPickerLng);
+        }
+
+        const color = document.getElementById('odp-picker-color').value || '#0284c7';
+        const label = getOdpPickerLabel();
+
+        if (!odpPickerMarker) {
+          const odpPickerDivIcon = createOdpPickerDivIcon(color, label);
+
+          odpPickerMarker = L.marker(startPos, {
+            draggable: true,
+            icon: odpPickerDivIcon,
+            zIndexOffset: 3000
+          }).addTo(map);
+
+          odpPickerMarker.on('drag', function (e) {
+            const pos = e.target.getLatLng();
+            updateOdpPickerCoords(pos.lat, pos.lng);
+          });
+
+          odpPickerMarker.on('dragend', function (e) {
+            const pos = e.target.getLatLng();
+            updateOdpPickerCoords(pos.lat, pos.lng);
+          });
+        } else {
+          odpPickerMarker.setLatLng(startPos);
+          updateOdpPickerPinColor();
+          if (!map.hasLayer(odpPickerMarker)) {
+            odpPickerMarker.addTo(map);
+          }
+        }
+
+        updateOdpPickerCoords(startPos.lat, startPos.lng);
+      } else {
+        toolbar.style.display = 'none';
+        if (hint && !isPickerMode) hint.style.display = 'none';
+        if (btnOdpPicker) {
+          btnOdpPicker.classList.remove('btn-primary');
+          btnOdpPicker.classList.add('btn-outline');
+        }
+        if (btnText) btnText.innerText = 'Pasang ODP';
+
+        if (odpPickerMarker) {
+          map.removeLayer(odpPickerMarker);
+          odpPickerMarker = null;
+        }
+      }
+    }
+
+    function goToMyLocationOdp() {
+      if (!navigator.geolocation) {
+        alert('Browser Anda tidak mendukung geolokasi GPS.');
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          if (isOdpPickerMode && odpPickerMarker) {
+            odpPickerMarker.setLatLng([lat, lng]);
+            updateOdpPickerCoords(lat, lng);
+          }
+          map.setView([lat, lng], 18, { animate: true });
+          showToast('GPS terdeteksi! Geser pin box tepat ke tiang ODP.');
+        },
+        err => {
+          alert('Gagal mendapatkan lokasi GPS: ' + err.message);
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    }
+
+    async function saveOdpPickerData() {
+      const id = document.getElementById('odp-picker-id').value.trim();
+      const name = document.getElementById('odp-picker-name').value.trim();
+      const cap = document.getElementById('odp-picker-capacity').value;
+      const color = document.getElementById('odp-picker-color').value;
+      const notes = document.getElementById('odp-picker-notes').value.trim();
+
+      let lat = currentOdpPickerLat;
+      let lng = currentOdpPickerLng;
+
+      if (odpPickerMarker) {
+        const pos = odpPickerMarker.getLatLng();
+        lat = pos.lat;
+        lng = pos.lng;
+      } else if (lat === null || lng === null) {
+        const center = map.getCenter();
+        lat = center.lat;
+        lng = center.lng;
+      }
 
       if (!lat || !lng) {
-        alert('Koordinat Latitude & Longitude tidak boleh kosong!');
+        alert('Tentukan titik tiang ODP pada peta terlebih dahulu!');
         return;
       }
 
@@ -2042,13 +2432,15 @@
         });
         const json = await res.json();
         if (json.success) {
-          showToast(`ODP "${name || id}" berhasil disimpan!`);
-          document.getElementById('odp-id').value = '';
-          document.getElementById('odp-name').value = '';
-          document.getElementById('odp-notes').value = '';
+          showToast(`ODP "${name || id}" berhasil disimpan di peta!`);
           await loadAllData();
+          toggleOdpPickerMode(false);
+          map.setView([lat, lng], 18, { animate: true });
+          if (odpMarkers[id]) {
+            odpMarkers[id].openPopup();
+          }
         } else {
-          alert('Gagal: ' + json.message);
+          alert('Gagal menyimpan ODP: ' + json.message);
         }
       } catch (err) {
         alert('Error: ' + err.message);
