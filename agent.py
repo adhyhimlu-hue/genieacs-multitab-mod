@@ -342,6 +342,19 @@ def get_device_pppoe_username(dev):
                     return str(u).strip()
     return dev.get("_deviceId", {}).get("_SerialNumber") or dev.get("_id", "Unknown")
 
+def get_datetime_diff_seconds(dt):
+    if not dt:
+        return 999999999
+    try:
+        from datetime import timezone
+        if hasattr(dt, "tzinfo") and dt.tzinfo is not None:
+            dt_ts = dt.timestamp()
+        else:
+            dt_ts = dt.replace(tzinfo=timezone.utc).timestamp()
+        return max(0, time.time() - dt_ts)
+    except Exception:
+        return 999999999
+
 def get_customer_friendly_summary(dev):
     if not dev:
         return "❌ Perangkat Anda tidak ditemukan."
@@ -387,7 +400,7 @@ def get_customer_friendly_summary(dev):
     last_inform = dev.get("_lastInform")
     online_str = "Offline 🔴"
     if last_inform:
-        diff_sec = (time.time() - last_inform.timestamp())
+        diff_sec = get_datetime_diff_seconds(last_inform)
         if diff_sec < 600:
             online_str = "Online (Normal) 🟢"
         else:
@@ -529,7 +542,7 @@ def get_device_summary(dev):
     last_inform = dev.get("_lastInform")
     online_str = "Offline 🔴"
     if last_inform:
-        diff_sec = (time.time() - last_inform.timestamp())
+        diff_sec = get_datetime_diff_seconds(last_inform)
         if diff_sec < 600:
             online_str = "Online (Aktif) 🟢"
         else:
@@ -688,7 +701,7 @@ def get_unconfigured_onts():
         last_inform = d.get("_lastInform")
         ago_str = "-"
         if last_inform:
-            ago_str = f"{int((time.time() - last_inform.timestamp()) // 60)} mnt lalu"
+            ago_str = f"{int(get_datetime_diff_seconds(last_inform) // 60)} mnt lalu"
             
         unconf_list.append({
             "sn": sn,
@@ -3086,7 +3099,14 @@ def get_geo_devices_data():
             pppoe = get_device_pppoe_username(dev)
             serial = dev.get("_deviceId", {}).get("_SerialNumber", "-")
             product_class = dev.get("_deviceId", {}).get("_ProductClass", "-")
-            ip = dev.get("_ip", "-")
+            vp = dev.get("VirtualParameters", {})
+            ip = (
+                vp.get("pppoeIP", {}).get("_value") or
+                vp.get("pppIP", {}).get("_value") or
+                vp.get("IPTR069", {}).get("_value") or
+                dev.get("_ip") or
+                "-"
+            )
             
             vp = dev.get("VirtualParameters", {})
             rx_raw = vp.get("RXPower", {}).get("_value")
@@ -3113,7 +3133,7 @@ def get_geo_devices_data():
             last_inform_str = "-"
             if last_inform:
                 try:
-                    diff_sec = now_ts - last_inform.timestamp()
+                    diff_sec = get_datetime_diff_seconds(last_inform)
                     is_online = (diff_sec < 600)
                     if diff_sec < 60:
                         last_inform_str = "Baru saja"
