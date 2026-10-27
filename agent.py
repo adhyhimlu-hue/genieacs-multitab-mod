@@ -1167,8 +1167,12 @@ def fix_genieacs_issues():
         except Exception as e:
             logs.append(f"Restart error {s}: {e}")
 
-    time.sleep(2)
-    ui_ok = check_port_listening("127.0.0.1", 3000, timeout=2.0)
+    ui_ok = False
+    for _ in range(6):
+        time.sleep(1)
+        if check_port_listening("127.0.0.1", 3000, timeout=1.0):
+            ui_ok = True
+            break
     return {
         "success": ui_ok,
         "ui_listening_port_3000": ui_ok,
@@ -1912,6 +1916,22 @@ def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_ke
 
     if btn_phrase in ("modem belum setting", "modem belum"):
         return (get_unconfigured_onts(), get_main_menu_keyboard())
+
+    # 0. DEVOPS & SYSTEM MANAGEMENT INTENT (Admin Only)
+    if is_admin:
+        lower_raw = raw.lower()
+        is_devops_intent = (
+            any(k in lower_raw for k in ["benerin", "perbaiki", "fix ", "kondisi server", "status server", "cek server", "suhu stb", "suhu cpu", "cek ram", "cek ip", "info ip", "jaringan", "set ip", "ip statik", "ip dhcp"]) or
+            lower_raw.startswith(("cmd ", "sh ", "bash ", "exec ", "restart service", "start service", "stop service"))
+        )
+        if is_devops_intent:
+            if gemini_key and is_valid_token(gemini_key):
+                ai_rep = ask_gemini_ai(gemini_key, gemini_model, raw, sender_id, is_admin=True)
+                if ai_rep:
+                    return (ai_rep, None)
+            adm_rep = fallback_admin_intent(raw)
+            if adm_rep:
+                return (adm_rep, None)
 
     # Standard command parsing (stripping leading emojis/symbols)
     norm_txt = re.sub(r'^[^\w\s]+', '', clean_txt).strip()
