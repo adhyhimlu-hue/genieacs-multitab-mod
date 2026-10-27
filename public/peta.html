@@ -822,6 +822,44 @@
       #picker-toolbar { width: 95%; bottom: 12px; padding: 12px; }
       .form-row { grid-template-columns: 1fr; }
     }
+    /* ANIMATED FLOWING FIBER OPTIC CABLES */
+    @keyframes flowCablePulse {
+      0% {
+        stroke-dashoffset: 32;
+      }
+      100% {
+        stroke-dashoffset: 0;
+      }
+    }
+
+    .flowing-cable {
+      stroke-dasharray: 8, 8 !important;
+      animation: flowCablePulse 1s linear infinite !important;
+      transition: stroke-width 0.2s, stroke-opacity 0.2s;
+    }
+
+    .flowing-cable:hover {
+      stroke-width: 5px !important;
+      stroke-opacity: 1 !important;
+      filter: drop-shadow(0 0 6px currentColor);
+    }
+
+    .flowing-cable-offline {
+      stroke-dasharray: 4, 6 !important;
+      stroke-opacity: 0.35 !important;
+      animation: none !important;
+    }
+
+    .cable-tooltip {
+      background: rgba(15, 23, 42, 0.9) !important;
+      border: 1px solid rgba(56, 189, 248, 0.4) !important;
+      color: #f1f5f9 !important;
+      font-size: 11px !important;
+      font-weight: 600 !important;
+      border-radius: 6px !important;
+      padding: 4px 8px !important;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+    }
   </style>
 </head>
 <body>
@@ -1387,27 +1425,38 @@
         m.addTo(map);
         clientMarkers[dev._id] = m;
 
-        // 3. Render Cable Polyline to ODP
+        // 3. Render Cable Polyline to ODP (Animated Flowing Light Stream)
         if (dev.odp && odpLookup[dev.odp] && odpLookup[dev.odp].lat) {
           const o = odpLookup[dev.odp];
           const distMeters = Math.round(map.distance([dev.lat, dev.lng], [o.lat, o.lng]));
+          const cableColor = dev.online ? (o.color || '#38bdf8') : '#64748b';
 
-          const polyline = L.polyline([[o.lat, o.lng], [dev.lat, dev.lng]], {
-            color: o.color || '#38bdf8',
-            weight: 2.5,
-            dashArray: '6, 6',
-            opacity: 0.85
+          // Background physical cable sheath
+          const bgLine = L.polyline([[o.lat, o.lng], [dev.lat, dev.lng]], {
+            color: cableColor,
+            weight: 3.5,
+            opacity: dev.online ? 0.35 : 0.15,
+            interactive: false
           });
 
-          polyline.bindTooltip(`Kabel ${o.name || o._id} ➔ ${dev.name || dev.pppoe}: <b>${distMeters} meter</b>`, {
+          // Foreground animated flow (aliran cahaya data fiber optik)
+          const polyline = L.polyline([[o.lat, o.lng], [dev.lat, dev.lng]], {
+            className: dev.online ? 'flowing-cable' : 'flowing-cable-offline',
+            color: cableColor,
+            weight: dev.online ? 2.5 : 1.5,
+            opacity: dev.online ? 0.95 : 0.4
+          });
+
+          polyline.bindTooltip(`Kabel ${o.name || o._id} ➔ ${dev.name || dev.pppoe}: <b>${distMeters} meter</b> (${dev.online ? 'Aktif Mengalir' : 'Offline'})`, {
             sticky: true,
             className: 'cable-tooltip'
           });
 
           if (showCables) {
+            bgLine.addTo(map);
             polyline.addTo(map);
           }
-          cablePolylines.push(polyline);
+          cablePolylines.push(bgLine, polyline);
         }
       });
 
