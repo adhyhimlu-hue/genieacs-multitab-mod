@@ -828,16 +828,18 @@ def add_or_set_wan_pppoe(dev, pppoe_user, pppoe_pass, vlan_id=None):
                 param_values.append([f"{target_path}.X_CMCC_VLANMode", "1", "xsd:unsignedInt"])
             elif detected_vlan_param == "X_CT-COM_VlanID":
                 param_values.append([f"{target_path}.X_CT-COM_Mode", "1", "xsd:unsignedInt"])
-        elif "HUAWEI" in mfg or "00259E" in oui:
-            param_values.append([f"{target_path}.X_HW_VLAN", v_str, "xsd:unsignedInt"])
-        elif "ZTE" in mfg or "ZICG" in mfg:
-            param_values.append([f"{target_path}.X_CMCC_VLANIDMark", v_str, "xsd:unsignedInt"])
-            param_values.append([f"{target_path}.X_CMCC_VLANMode", "1", "xsd:unsignedInt"])
-        elif "CIOT" in mfg or "GM220" in prod_class or "M63X" in prod_class or "RTEG" in mfg:
-            param_values.append([f"{target_path}.X_CT-COM_VlanID", v_str, "xsd:unsignedInt"])
-            param_values.append([f"{target_path}.X_CT-COM_Mode", "1", "xsd:unsignedInt"])
-        else:
-            param_values.append([f"{target_path}.VLANID", v_str, "xsd:unsignedInt"])
+        elif not target_node or len(target_node) == 0:
+            # Fallback only when target_node parameters are unknown / newly created
+            if "HUAWEI" in mfg or "00259E" in oui:
+                param_values.append([f"{target_path}.X_HW_VLAN", v_str, "xsd:unsignedInt"])
+            elif "ZTE" in mfg or "ZICG" in mfg:
+                param_values.append([f"{target_path}.X_CMCC_VLANIDMark", v_str, "xsd:unsignedInt"])
+                param_values.append([f"{target_path}.X_CMCC_VLANMode", "1", "xsd:unsignedInt"])
+            elif "CIOT" in mfg or "GM220" in prod_class or "M63X" in prod_class or "RTEG" in mfg:
+                param_values.append([f"{target_path}.X_CT-COM_VlanID", v_str, "xsd:unsignedInt"])
+                param_values.append([f"{target_path}.X_CT-COM_Mode", "1", "xsd:unsignedInt"])
+            else:
+                param_values.append([f"{target_path}.VLANID", v_str, "xsd:unsignedInt"])
 
     url_cr = f"{NBI_URL}/devices/{quote(dev_id, safe='')}/tasks?connection_request"
     url_queue = f"{NBI_URL}/devices/{quote(dev_id, safe='')}/tasks"
