@@ -1166,7 +1166,7 @@ def fix_genieacs_issues():
         logs.append(f"Restart error: {e}")
 
     ui_ok = False
-    for _ in range(12):
+    for _ in range(25):
         time.sleep(1)
         if check_port_listening("127.0.0.1", 3000, timeout=1.0):
             ui_ok = True
