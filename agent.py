@@ -3007,6 +3007,11 @@ def apply_system_update():
                     tar_cmd = subprocess.run(["tar", "-zxf", tar_file, "-C", node_dir + "/"], capture_output=True, text=True, timeout=30)
                     if tar_cmd.returncode == 0:
                         log(f"  ✓ genieacs_ui_mod.tar.gz diekstrak ke {node_dir}/.")
+                    bin_dir = os.path.join(genie_target, "bin")
+                    if os.path.exists(bin_dir):
+                        subprocess.run(["chmod", "+x"] + [os.path.join(bin_dir, f) for f in os.listdir(bin_dir)], check=False)
+                    subprocess.run(["chmod", "+x", "/usr/bin/genieacs-ui", "/usr/bin/genieacs-cwmp", "/usr/bin/genieacs-nbi", "/usr/bin/genieacs-fs"], check=False)
+                    subprocess.run(["chmod", "+x", "/usr/local/bin/genieacs-ui", "/usr/local/bin/genieacs-cwmp", "/usr/local/bin/genieacs-nbi", "/usr/local/bin/genieacs-fs"], check=False)
                 pub = os.path.join(genie_target, "public")
                 if os.path.exists(pub):
                     peta_src = os.path.join(repo_dir, "public", "peta.html")
