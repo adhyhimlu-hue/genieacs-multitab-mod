@@ -455,6 +455,51 @@ def find_device(query_str):
     })
     return dev
 
+def find_device_by_customer_identifier(ident_str):
+    if not ident_str:
+        return None
+    raw = str(ident_str).strip()
+    db = get_db()
+    if db is None:
+        return None
+
+    # 1. Coba cari berdasarkan nomor HP / WhatsApp
+    dev = find_device_by_phone(raw)
+    if dev:
+        return dev
+
+    # 2. Coba cari di db.device_locations berdasarkan Nama Pelanggan di peta atau _id
+    try:
+        reg = {"$regex": f"^{re.escape(raw)}$", "$options": "i"}
+        loc = db.device_locations.find_one({
+            "$or": [
+                {"name": raw},
+                {"name": reg},
+                {"_id": raw}
+            ]
+        })
+        if loc and loc.get("_id"):
+            dev = find_device(loc.get("_id"))
+            if dev:
+                if loc.get("name"):
+                    dev["_custom_customer_name"] = loc.get("name")
+                return dev
+    except Exception as e:
+        logger.warning(f"Error querying device_locations by identifier: {e}")
+
+    # 3. Coba cari berdasarkan username PPPoE, Serial Number, dll
+    try:
+        dev = find_device(raw)
+        if dev:
+            loc = db.device_locations.find_one({"_id": dev.get("_id")})
+            if loc and loc.get("name"):
+                dev["_custom_customer_name"] = loc.get("name")
+            return dev
+    except Exception as e:
+        logger.warning(f"Error querying devices by generic find_device: {e}")
+
+    return None
+
 def get_device_summary(dev):
     if not dev:
         return None, "❌ Perangkat modem tidak ditemukan. Pastikan Username PPPoE atau Serial Number benar.", True
@@ -2897,18 +2942,21 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
           </p>
 
           <div class="form-group" style="margin-bottom: 14px;">
-            <label>Status Layanan OTP Pelanggan:</label>
-            <select id="otp_enabled" name="otp_enabled">
-              <option value="true">Aktif (Enabled) 🟢</option>
-              <option value="false">Nonaktif (Disabled) 🔴</option>
+            <label>Metode Verifikasi Login Pelanggan:</label>
+            <select id="otp_enabled" name="otp_enabled" onchange="toggleOtpExpiryVisibility()">
+              <option value="true">Gunakan Kode OTP WhatsApp (Wajib OTP 4 Digit) 🟢</option>
+              <option value="false">Tanpa OTP (Cukup Masukkan Nomor Pelanggan / HP) 🟡</option>
             </select>
-            <div class="hint">Jika dinonaktifkan, permintaan OTP login pelanggan di portal mandiri akan ditolak.</div>
+            <div class="hint">
+              • <b>Gunakan Kode OTP WhatsApp</b>: Pelanggan wajib verifikasi kode OTP 4 digit yang dikirim via WhatsApp.<br>
+              • <b>Tanpa OTP</b>: Pelanggan bisa langsung login ke dashboard WiFi hanya dengan mengetik nomor pelanggan / WhatsApp tanpa perlu kode OTP.
+            </div>
           </div>
 
-          <div class="form-group" style="margin-bottom: 0;">
+          <div class="form-group" id="otpExpiryGroup" style="margin-bottom: 0;">
             <label>Waktu Expired Kode OTP (Menit):</label>
             <input type="number" id="otp_expiry_minutes" name="otp_expiry_minutes" min="1" max="60" value="5" placeholder="Contoh: 5">
-            <div class="hint">Berapa menit kode OTP 4 digit berlaku sebelum kedaluwarsa (default: 5 menit).</div>
+            <div class="hint">Berapa menit kode OTP 4 digit berlaku sebelum kedaluwarsa (default: 5 menit). Berlaku saat mode OTP WhatsApp aktif.</div>
           </div>
         </div>
       </div>
@@ -3201,8 +3249,18 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
         document.getElementById('wa_admin_numbers').value = data.wa_admin_numbers || '';
         document.getElementById('otp_enabled').value = data.otp_enabled !== undefined ? String(data.otp_enabled) : 'true';
         document.getElementById('otp_expiry_minutes').value = data.otp_expiry_minutes || '5';
+        toggleOtpExpiryVisibility();
       })
       .catch(err => showAlert('❌ Gagal memuat konfigurasi: ' + err.message, false));
+
+    function toggleOtpExpiryVisibility() {
+      const sel = document.getElementById('otp_enabled');
+      const grp = document.getElementById('otpExpiryGroup');
+      if (sel && grp) {
+        grp.style.display = (sel.value === 'false') ? 'none' : 'block';
+      }
+    }
+    window.toggleOtpExpiryVisibility = toggleOtpExpiryVisibility;
 
     // WhatsApp Live Status Polling
     let pollInterval = null;
@@ -4292,6 +4350,19 @@ class BotConfigHandler(BaseHTTPRequestHandler):
             self.send_html(get_customer_portal_html())
             return
 
+        if path == "/api/customer/auth_config":
+            cfgs = get_config()
+            otp_enabled = cfgs.get("agent.otp.enabled", "true").lower() in ("true", "1", "yes")
+            b_name = cfgs.get("agent.brand.name", BRAND_NAME)
+            b_phone = cfgs.get("agent.brand.phone", BRAND_PHONE)
+            self.send_json({
+                "success": True,
+                "otp_enabled": otp_enabled,
+                "brand_name": b_name,
+                "brand_phone": b_phone
+            })
+            return
+
         if path in ("/admin", "/admin/"):
             if self.is_authenticated_admin():
                 self.send_html(HTML_CONFIG_PAGE)
@@ -4530,36 +4601,50 @@ class BotConfigHandler(BaseHTTPRequestHandler):
         if path == "/api/customer/request_otp":
             cfgs = get_config()
             otp_enabled = cfgs.get("agent.otp.enabled", "true").lower() in ("true", "1", "yes")
-            if not otp_enabled:
-                self.send_json({"success": False, "error": "Layanan portal mandiri pelanggan saat ini sedang dinonaktifkan oleh administrator."})
-                return
 
-            phone_raw = req.get("phone", "")
+            phone_raw = str(req.get("phone", "")).strip()
             if not phone_raw:
-                self.send_json({"success": False, "error": "Nomor WhatsApp wajib diisi."})
+                self.send_json({"success": False, "error": "Nomor WhatsApp atau Nomor Pelanggan wajib diisi."})
                 return
 
             clean_phone = normalize_phone(phone_raw)
-            if not clean_phone or len(clean_phone) < 8:
-                self.send_json({"success": False, "error": "Nomor WhatsApp tidak valid."})
-                return
-
-            now = time.time()
-            if clean_phone in CUSTOMER_OTP_STORE:
-                existing = CUSTOMER_OTP_STORE[clean_phone]
-                if existing.get("resend_after", 0) > now:
-                    remaining = int(existing["resend_after"] - now)
-                    self.send_json({"success": False, "error": f"Harap tunggu {remaining} detik sebelum meminta kode OTP baru.", "cooldown": remaining})
-                    return
-
-            dev = find_device_by_phone(clean_phone)
+            dev = find_device_by_customer_identifier(clean_phone or phone_raw)
             if not dev:
                 b_phone = cfgs.get("agent.brand.phone", BRAND_PHONE)
                 self.send_json({
                     "success": False,
-                    "error": f"Nomor WhatsApp ({clean_phone}) belum terdaftar pada sistem jaringan kami. Pastikan nomor sesuai saat pendaftaran atau hubungi CS di {b_phone}."
+                    "error": f"Nomor Pelanggan / WhatsApp ({phone_raw}) belum terdaftar pada sistem jaringan kami. Pastikan nomor sesuai saat pendaftaran atau hubungi CS di {b_phone}."
                 })
                 return
+
+            now = time.time()
+
+            # JIKA MODE OTP DINONAKTIFKAN: LANGSUNG LOGIN TANPA PERLU KODE OTP
+            if not otp_enabled:
+                token = secrets.token_hex(24)
+                CUSTOMER_SESSIONS[token] = {
+                    "phone": clean_phone or phone_raw,
+                    "device_id": dev["_id"],
+                    "expires": now + 86400,
+                    "created_at": now
+                }
+                cookie_val = f"customer_token={token}; Path=/; SameSite=Lax; Max-Age=86400"
+                self.send_json({
+                    "success": True,
+                    "otp_required": False,
+                    "token": token,
+                    "message": "Login berhasil! Mengalihkan ke dashboard WiFi..."
+                }, extra_headers={"Set-Cookie": cookie_val})
+                return
+
+            # JIKA MODE OTP DIAKTIFKAN: BUAT KODE OTP 4 DIGIT & KIRIMKAN KE WHATSAPP
+            lookup_key = clean_phone if clean_phone else phone_raw
+            if lookup_key in CUSTOMER_OTP_STORE:
+                existing = CUSTOMER_OTP_STORE[lookup_key]
+                if existing.get("resend_after", 0) > now:
+                    remaining = int(existing["resend_after"] - now)
+                    self.send_json({"success": False, "error": f"Harap tunggu {remaining} detik sebelum meminta kode OTP baru.", "cooldown": remaining})
+                    return
 
             try:
                 exp_min = int(cfgs.get("agent.otp.expiry_minutes", "5"))
@@ -4570,7 +4655,7 @@ class BotConfigHandler(BaseHTTPRequestHandler):
             expiry_seconds = exp_min * 60
 
             otp = f"{random.randint(1000, 9999)}"
-            CUSTOMER_OTP_STORE[clean_phone] = {
+            CUSTOMER_OTP_STORE[lookup_key] = {
                 "otp": otp,
                 "expires": now + expiry_seconds,
                 "resend_after": now + 45,
@@ -4585,34 +4670,51 @@ class BotConfigHandler(BaseHTTPRequestHandler):
                 f"Demi keamanan WiFi Anda, jangan berikan kode ini kepada siapapun.\n"
                 f"Kode berlaku selama {exp_min} menit."
             )
-            send_whatsapp_message_local(clean_phone, wa_text)
 
-            self.send_json({"success": True, "message": "Kode OTP 4 digit telah dikirim ke WhatsApp Anda.", "cooldown": 45})
+            # Cari nomor tujuan WhatsApp yang valid
+            dest_phone = clean_phone
+            if not dest_phone:
+                db = get_db()
+                if db is not None:
+                    loc = db.device_locations.find_one({"_id": dev["_id"]})
+                    if loc and loc.get("phone"):
+                        dest_phone = normalize_phone(loc.get("phone"))
+
+            if dest_phone:
+                send_whatsapp_message_local(dest_phone, wa_text)
+
+            self.send_json({
+                "success": True,
+                "otp_required": True,
+                "message": "Kode OTP 4 digit telah dikirim ke WhatsApp Anda.",
+                "cooldown": 45
+            })
             return
 
         if path == "/api/customer/verify_otp":
-            phone_raw = req.get("phone", "")
+            phone_raw = str(req.get("phone", "")).strip()
             otp_input = str(req.get("otp", "")).strip()
             clean_phone = normalize_phone(phone_raw)
+            lookup_key = clean_phone if (clean_phone and clean_phone in CUSTOMER_OTP_STORE) else phone_raw
 
-            if not clean_phone or not otp_input:
+            if not lookup_key or not otp_input:
                 self.send_json({"success": False, "error": "Nomor dan kode OTP wajib diisi."})
                 return
 
-            if clean_phone not in CUSTOMER_OTP_STORE:
+            if lookup_key not in CUSTOMER_OTP_STORE:
                 self.send_json({"success": False, "error": "Kode OTP tidak ditemukan atau telah kedaluwarsa. Silakan minta kode baru."})
                 return
 
-            stored = CUSTOMER_OTP_STORE[clean_phone]
+            stored = CUSTOMER_OTP_STORE[lookup_key]
             now = time.time()
             if stored.get("expires", 0) < now:
-                CUSTOMER_OTP_STORE.pop(clean_phone, None)
+                CUSTOMER_OTP_STORE.pop(lookup_key, None)
                 self.send_json({"success": False, "error": "Kode OTP telah kedaluwarsa. Silakan minta kode baru."})
                 return
 
             stored["attempts"] = stored.get("attempts", 0) + 1
             if stored["attempts"] > 5:
-                CUSTOMER_OTP_STORE.pop(clean_phone, None)
+                CUSTOMER_OTP_STORE.pop(lookup_key, None)
                 self.send_json({"success": False, "error": "Terlalu banyak percobaan salah. Silakan minta kode OTP baru."})
                 return
 
@@ -4621,11 +4723,11 @@ class BotConfigHandler(BaseHTTPRequestHandler):
                 return
 
             dev_id = stored.get("device_id")
-            CUSTOMER_OTP_STORE.pop(clean_phone, None)
+            CUSTOMER_OTP_STORE.pop(lookup_key, None)
 
             token = secrets.token_hex(24)
             CUSTOMER_SESSIONS[token] = {
-                "phone": clean_phone,
+                "phone": clean_phone or phone_raw,
                 "device_id": dev_id,
                 "expires": now + 86400,
                 "created_at": now
