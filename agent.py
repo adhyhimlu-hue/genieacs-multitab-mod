@@ -1593,15 +1593,24 @@ def ask_gemini_ai(gemini_key, model_name, user_prompt, sender_id="admin", is_adm
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={gemini_key}"
     headers = {"Content-Type": "application/json"}
     
-    system_instruction = (
-        f"Anda adalah Asisten AI Senior DevOps Linux Armbian & TR-069 GenieACS Resmi dari {BRAND_NAME}.\n"
-        f"Kontak CS/WhatsApp: {BRAND_PHONE}.\n"
-        "Anda memiliki hak akses root penuh untuk mengelola server STB Armbian ini.\n"
-        "Anda dapat menggunakan tools untuk mendiagnosa server, memperbaiki izin file (chmod +x) GenieACS, "
-        "me-restart service, mengatur IP statik / DHCP melalui NetworkManager (nmcli), membaca log, dan menjalankan perintah Linux.\n"
-        "Gunakan tools secara proaktif ketika admin meminta bantuan teknis seputar server atau jaringan.\n"
-        "Selalu berikan penjelasan hasil kerja Anda secara ramah, sopan, ringkas, dan jelas dalam bahasa Indonesia."
-    )
+    if is_admin:
+        system_instruction = (
+            f"Anda adalah Asisten AI Senior DevOps Linux Armbian & TR-069 GenieACS Resmi dari {BRAND_NAME}.\n"
+            f"Kontak CS/WhatsApp: {BRAND_PHONE}.\n"
+            "Anda memiliki hak akses root penuh untuk mengelola server STB Armbian ini.\n"
+            "Anda dapat menggunakan tools untuk mendiagnosa server, memperbaiki izin file (chmod +x) GenieACS, "
+            "me-restart service, mengatur IP statik / DHCP melalui NetworkManager (nmcli), membaca log, dan menjalankan perintah Linux.\n"
+            "Gunakan tools secara proaktif ketika admin meminta bantuan teknis seputar server atau jaringan.\n"
+            "Selalu berikan penjelasan hasil kerja Anda secara ramah, sopan, ringkas, dan jelas dalam bahasa Indonesia."
+        )
+    else:
+        system_instruction = (
+            f"Anda adalah Asisten Layanan Pelanggan (Customer Care) Resmi dari {BRAND_NAME} (Layanan Internet WiFi & RT/RW Net).\n"
+            f"Nomor Kontak WhatsApp / CS: {BRAND_PHONE}.\n"
+            f"Tugas Anda adalah menjawab pertanyaan calon pelanggan atau masyarakat seputar layanan WiFi {BRAND_NAME} secara ramah, santun, ringkas, dan membantu dalam bahasa Indonesia.\n"
+            f"Informasikan bahwa untuk pendaftaran pasang baru, survei lokasi, atau info paket promo terbaru dapat langsung menghubungi Customer Service di {BRAND_PHONE}.\n"
+            "Jangan memberikan janji teknis di luar kewenangan atau mengarang informasi di luar layanan internet."
+        )
 
     contents = [
         {
@@ -1861,16 +1870,30 @@ def handle_callback_query(token, sender_id, cb_data, callback_id):
 def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_key="", gemini_model="gemini-1.5-flash", registered_tag=None):
     raw = str(user_text or "").strip()
     if not raw:
-        return ("⚠️ Pesan kosong.", None)
+        return (None, None)
 
     txt = raw
     clean_txt = txt.lstrip("/!#").strip()
+
+    # 0. Resolusi Identitas Pengirim (Admin, Pelanggan Terdaftar, atau Tamu/Orang Asing)
+    customer_dev = None
+    if not is_admin:
+        if registered_tag:
+            customer_dev = find_device(registered_tag)
+        if not customer_dev and sender_id:
+            customer_dev = find_device_by_phone(sender_id)
+            if customer_dev:
+                registered_tag = customer_dev.get("_id")
+
+    is_customer = bool(customer_dev or registered_tag)
 
     # Exact check for quick button presses (matches emoji + text variations)
     btn_words = re.sub(r'[^a-zA-Z0-9\s]', ' ', clean_txt).strip().lower().split()
     btn_phrase = " ".join(btn_words)
 
     if btn_phrase in ("tambah set wan", "set wan"):
+        if not is_admin:
+            return ("⛔ Perintah ini khusus untuk Admin.", None)
         wan_guide = (
             "🌐 *Tambah / Konfigurasi WAN PPPoE*\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
@@ -1884,9 +1907,32 @@ def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_ke
         return (wan_guide, None)
 
     if btn_phrase in ("reboot modem", "restart modem"):
+        if is_customer and not is_admin:
+            target = customer_dev.get("_id") if customer_dev else registered_tag
+            dev = find_device(target)
+            if dev:
+                ok, msg = reboot_device_task(dev)
+                p_name = get_device_pppoe_username(dev)
+                return (
+                    f"🔄 *Perintah Restart Terkirim!*\n"
+                    f"Modem Anda (*{p_name}*) sedang memulai ulang (reboot).\n"
+                    f"Mohon tunggu sekitar 1-2 menit hingga lampu PON/Internet menyala stabil kembali.",
+                    None
+                )
         return ("🔄 *Reboot Modem*: Silakan gunakan perintah:\n`reboot <username_pppoe/sn>`\n_Contoh:_ `reboot cucimotor`", None)
 
     if btn_phrase in ("ubah wifi sandi", "ubah wifi", "wifi sandi"):
+        if is_customer and not is_admin:
+            return (
+                "📶 *Ubah WiFi / Sandi*\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "Silakan gunakan salah satu perintah berikut:\n\n"
+                "• *Ubah Nama & Sandi:* `wifi <nama_baru> <sandi_baru>`\n"
+                "• *Ubah Sandi Saja:* `pass <sandi_baru>`\n"
+                "• *Ubah Nama Saja:* `ssid <nama_baru>`\n\n"
+                "_Contoh:_ `wifi Rumah-Ku SandiRahasia123`",
+                None
+            )
         wifi_guide = (
             "📶 *Ubah WiFi / Sandi Pelanggan*\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
@@ -1901,18 +1947,34 @@ def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_ke
         return (wifi_guide, None)
 
     if btn_phrase in ("status server stb", "status server", "status stb", "server stb"):
+        if not is_admin:
+            return ("⛔ Perintah ini khusus untuk Admin.", None)
         return (get_server_stats(), get_main_menu_keyboard())
 
     if btn_phrase in ("daftar klien wifi", "daftar klien", "klien wifi", "cek klien"):
+        if is_customer and not is_admin:
+            target = customer_dev.get("_id") if customer_dev else registered_tag
+            dev = find_device(target)
+            if dev:
+                return (get_device_clients(dev), None)
         return ("👥 *Daftar Klien Terhubung*: Silakan gunakan perintah:\n`klien <username_pppoe/sn>`\n_Contoh:_ `klien cucimotor`", None)
 
     if btn_phrase in ("cek modem", "info modem"):
+        if is_customer and not is_admin:
+            target = customer_dev.get("_id") if customer_dev else registered_tag
+            dev = find_device(target)
+            if dev:
+                return (get_customer_friendly_summary(dev), None)
         return ("🔍 *Cek Modem*: Silakan gunakan perintah:\n`cek <username_pppoe/sn>`\n_Contoh:_ `cek cucimotor`", None)
 
     if btn_phrase in ("cek redaman kritis", "cek redaman", "redaman kritis"):
+        if not is_admin:
+            return ("⛔ Perintah ini khusus untuk Admin.", None)
         return (get_bad_rx_summary(), get_main_menu_keyboard())
 
     if btn_phrase in ("modem belum setting", "modem belum"):
+        if not is_admin:
+            return ("⛔ Perintah ini khusus untuk Admin.", None)
         return (get_unconfigured_onts(), get_main_menu_keyboard())
 
     # 0. DEVOPS & SYSTEM MANAGEMENT INTENT (Admin Only)
@@ -1975,16 +2037,6 @@ def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_ke
                 rest = sub_val
     elif cmd == "klien" and rest.lower().startswith("wifi "):
         rest = rest[5:].strip()
-
-    # 0. Resolusi Modem Pelanggan dari Tag Nomor WhatsApp Pengirim
-    customer_dev = None
-    if not is_admin:
-        if registered_tag:
-            customer_dev = find_device(registered_tag)
-        if not customer_dev and sender_id:
-            customer_dev = find_device_by_phone(sender_id)
-            if customer_dev:
-                registered_tag = customer_dev.get("_id")
 
     # 1. Menu & Help
     if cmd in ["menu", "start", "bantuan", "help"]:
@@ -2086,6 +2138,8 @@ def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_ke
     # 6. Klien WiFi Terhubung
     if cmd in ["klien", "client", "clients"]:
         target = rest or registered_tag
+        if not target and not is_admin and customer_dev:
+            target = customer_dev.get("_id")
         if not target:
             return ("⚠️ Gunakan: `klien <username_pppoe/sn>`", None)
         dev = find_device(target)
@@ -2364,8 +2418,9 @@ def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_ke
             None
         )
 
-    # 16. Fallback Gemini AI / Percakapan Cerdas & DevOps Self-Healing
+    # 16. Fallback Respon Cerdas Sesuai Hak Akses Pengirim
     if is_admin:
+        # ADMIN: Selalu dijawab AI / DevOps (tidak butuh tanda tanya)
         if gemini_key and is_valid_token(gemini_key):
             ai_reply = ask_gemini_ai(gemini_key, gemini_model, raw, sender_id, is_admin=True)
             if ai_reply:
@@ -2374,17 +2429,33 @@ def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_ke
         fallback_rep = fallback_admin_intent(raw)
         if fallback_rep:
             return (fallback_rep, None)
-    else:
-        if gemini_key and is_valid_token(gemini_key):
-            ai_reply = ask_gemini_ai(gemini_key, gemini_model, raw, sender_id, is_admin=False)
-            if ai_reply:
-                return (ai_reply, None)
-
-    # Default if not understood
-    if is_admin:
         return (f"⚠️ Perintah `{raw}` tidak dikenali. Ketik `menu` untuk melihat daftar perintah.", get_main_menu_keyboard())
+
+    elif is_customer:
+        # PELANGGAN TERDAFTAR: Harus sesuai perintah saja!
+        # Jika chat biasa (halo, lagi dimana, makasih, p, stiker, dsb), BOT DIAM (TIDAK MENJAWAB)
+        # agar admin / pemilik WA dapat membalas secara langsung tanpa terinterupsi bot.
+        return (None, None)
+
     else:
-        return (f"👋 Halo! Nomor Anda belum terdaftar. Ketik `daftar <id_pelanggan>` untuk menghubungkan akun internet Anda.", None)
+        # BUKAN ADMIN & BUKAN PELANGGAN (Nomor Luar / Calon Pelanggan / Nomor Asing):
+        # HANYA dijawab AI jika terdapat tanda tanya (?) dalam pesan.
+        has_question = ("?" in raw) or ("？" in raw)
+        if has_question:
+            if gemini_key and is_valid_token(gemini_key):
+                ai_reply = ask_gemini_ai(gemini_key, gemini_model, raw, sender_id, is_admin=False)
+                if ai_reply:
+                    return (ai_reply, None)
+            # Pesan standar Customer Service jika tanpa API key atau AI kosong
+            cs_reply = (
+                f"👋 Halo! Terima kasih telah menghubungi *{BRAND_NAME}*.\n\n"
+                f"Untuk informasi seputar pemasangan baru, paket internet WiFi, atau bantuan layanan, "
+                f"silakan langsung hubungi Customer Service kami di *{BRAND_PHONE}*."
+            )
+            return (cs_reply, None)
+        else:
+            # Tidak ada tanda tanya '?' (chat biasa, sapaan 'P', pesan pribadi, broadcast) -> BOT DIAM (TIDAK MENJAWAB)
+            return (None, None)
 
 
 def handle_incoming_message(token, chat_id, user_text, gemini_key, model_name):

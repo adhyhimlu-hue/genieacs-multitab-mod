@@ -649,8 +649,8 @@ export async function startWhatsAppBot() {
               const resData = await agentRes.json();
               if (resData && resData.reply) {
                 await reply(resData.reply);
-                continue;
               }
+              continue;
             } else {
               console.error(`[WA] GenieACS Agent API HTTP error: ${agentRes.status}`);
             }
