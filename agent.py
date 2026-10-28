@@ -4742,13 +4742,14 @@ class BotConfigHandler(BaseHTTPRequestHandler):
                 self.send_json({"success": False, "error": "Sesi login Anda telah berakhir. Silakan login kembali."}, status=401)
                 return
 
-            new_ssid = str(req.get("ssid", "")).strip()
-            new_pass = str(req.get("password", "")).strip()
+            new_ssid = str(req.get("ssid", "")).strip() if req.get("ssid") is not None else ""
+            new_pass = str(req.get("password", "")).strip() if req.get("password") is not None else ""
 
-            if not new_ssid:
-                self.send_json({"success": False, "error": "Nama WiFi tidak boleh kosong."})
+            if not new_ssid and not new_pass:
+                self.send_json({"success": False, "error": "Harap masukkan Nama WiFi atau Kata Sandi yang ingin diubah."})
                 return
-            if len(new_pass) < 8:
+
+            if new_pass and len(new_pass) < 8:
                 self.send_json({"success": False, "error": "Kata sandi WiFi minimal harus 8 karakter."})
                 return
 
@@ -4757,9 +4758,19 @@ class BotConfigHandler(BaseHTTPRequestHandler):
                 self.send_json({"success": False, "error": "Perangkat modem tidak ditemukan."}, status=404)
                 return
 
-            ok, msg = set_wifi_credentials(dev, new_ssid=new_ssid, new_password=new_pass)
+            ok, msg = set_wifi_credentials(
+                dev,
+                new_ssid=new_ssid if new_ssid else None,
+                new_password=new_pass if new_pass else None
+            )
             if ok:
-                self.send_json({"success": True, "message": "Pengaturan WiFi berhasil diperbarui!"})
+                if new_ssid and new_pass:
+                    m = "Nama WiFi dan Kata Sandi berhasil diperbarui!"
+                elif new_ssid:
+                    m = f"Nama WiFi berhasil diubah menjadi '{new_ssid}'!"
+                else:
+                    m = "Kata Sandi WiFi berhasil diperbarui!"
+                self.send_json({"success": True, "message": m})
             else:
                 self.send_json({"success": False, "error": f"Gagal memperbarui WiFi: {msg}"})
             return

@@ -541,11 +541,45 @@
         </div>
       </div>
 
-      <!-- WiFi Configuration Card -->
+      <!-- Card 1: Ubah Nama WiFi (SSID) -->
       <div class="card">
-        <h3 style="font-size: 0.95rem; font-weight: 700; margin-bottom: 14px;">📶 Pengaturan Nama & Sandi WiFi</h3>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+          <h3 style="font-size: 0.95rem; font-weight: 700; display: flex; align-items: center; gap: 6px;">
+            📶 Ubah Nama WiFi (SSID)
+          </h3>
+          <span style="font-size: 0.72rem; color: #38bdf8; background: rgba(56, 189, 248, 0.1); padding: 2px 8px; border-radius: 6px;">2.4 GHz</span>
+        </div>
 
-        <div class="info-row" style="background: rgba(15, 23, 42, 0.4); padding: 10px 12px; border-radius: 10px; margin-bottom: 16px;">
+        <form id="formUpdateSsid">
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label class="form-label" for="inputSsid">Nama WiFi (SSID)</label>
+            <div class="input-wrapper">
+              <span class="input-icon">
+                <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+                </svg>
+              </span>
+              <input type="text" id="inputSsid" class="form-control" placeholder="Nama WiFi Baru" maxlength="32" required>
+            </div>
+            <div style="font-size: 0.74rem; color: #64748b; margin-top: 4px;">
+              Nama jaringan WiFi yang tampil saat HP / laptop memindai WiFi.
+            </div>
+          </div>
+
+          <button type="submit" id="btnSaveSsid" class="btn btn-primary" style="padding: 10px 14px; font-size: 0.88rem;">
+            <span id="btnTextSaveSsid">💾 Simpan Nama WiFi</span>
+            <div id="btnSpinnerSaveSsid" class="spinner" style="display: none;"></div>
+          </button>
+        </form>
+      </div>
+
+      <!-- Card 2: Ubah Sandi WiFi (Password) -->
+      <div class="card">
+        <h3 style="font-size: 0.95rem; font-weight: 700; margin-bottom: 14px; display: flex; align-items: center; gap: 6px;">
+          🔐 Ubah Kata Sandi (Password) WiFi
+        </h3>
+
+        <div class="info-row" style="background: rgba(15, 23, 42, 0.4); padding: 10px 12px; border-radius: 10px; margin-bottom: 14px;">
           <div>
             <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Sandi WiFi Saat Ini</div>
             <div style="font-size: 1rem; font-weight: 700; letter-spacing: 0.05em;" id="displayCurrentPass">••••••••</div>
@@ -556,38 +590,26 @@
           </div>
         </div>
 
-        <form id="formUpdateWifi">
-          <div class="form-group">
-            <label class="form-label" for="inputSsid">Nama WiFi (SSID) Baru</label>
-            <div class="input-wrapper">
-              <span class="input-icon">
-                <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
-                </svg>
-              </span>
-              <input type="text" id="inputSsid" class="form-control" placeholder="Nama WiFi Baru" maxlength="32" required>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label" for="inputPass">Kata Sandi Baru (Min. 8 Karakter)</label>
+        <form id="formUpdatePass">
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label class="form-label" for="inputPass">Kata Sandi Baru</label>
             <div class="input-wrapper">
               <span class="input-icon">
                 <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                 </svg>
               </span>
-              <input type="password" id="inputPass" class="form-control" placeholder="Sandi minimal 8 huruf/angka" minlength="8" maxlength="63" required>
+              <input type="password" id="inputPass" class="form-control" placeholder="Minimal 8 karakter huruf / angka" minlength="8" maxlength="63" required>
               <button type="button" id="btnTogglePassVisibility" style="position: absolute; right: 12px; background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 1rem;">👁️</button>
             </div>
-            <div style="font-size: 0.74rem; color: #64748b; margin-top: 5px;">
-              Gunakan kombinasi huruf & angka agar WiFi rumah Anda tidak mudah dibobol.
+            <div style="font-size: 0.74rem; color: #64748b; margin-top: 4px;">
+              Gunakan kombinasi minimal 8 karakter agar aman dari pembobolan.
             </div>
           </div>
 
-          <button type="submit" id="btnSaveWifi" class="btn btn-primary">
-            <span id="btnTextSave">Simpan Perubahan WiFi</span>
-            <div id="btnSpinnerSave" class="spinner" style="display: none;"></div>
+          <button type="submit" id="btnSavePass" class="btn btn-primary" style="padding: 10px 14px; font-size: 0.88rem; background: #0284c7;">
+            <span id="btnTextSavePass">💾 Simpan Kata Sandi</span>
+            <div id="btnSpinnerSavePass" class="spinner" style="display: none;"></div>
           </button>
         </form>
       </div>
@@ -694,10 +716,15 @@
     const btnCopyPass = document.getElementById('btnCopyPass');
     const inputSsid = document.getElementById('inputSsid');
     const inputPass = document.getElementById('inputPass');
-    const formUpdateWifi = document.getElementById('formUpdateWifi');
-    const btnSaveWifi = document.getElementById('btnSaveWifi');
-    const btnTextSave = document.getElementById('btnTextSave');
-    const btnSpinnerSave = document.getElementById('btnSpinnerSave');
+    const formUpdateSsid = document.getElementById('formUpdateSsid');
+    const btnSaveSsid = document.getElementById('btnSaveSsid');
+    const btnTextSaveSsid = document.getElementById('btnTextSaveSsid');
+    const btnSpinnerSaveSsid = document.getElementById('btnSpinnerSaveSsid');
+
+    const formUpdatePass = document.getElementById('formUpdatePass');
+    const btnSavePass = document.getElementById('btnSavePass');
+    const btnTextSavePass = document.getElementById('btnTextSavePass');
+    const btnSpinnerSavePass = document.getElementById('btnSpinnerSavePass');
     const btnRefreshStatus = document.getElementById('btnRefreshStatus');
     const btnLogout = document.getElementById('btnLogout');
     const btnChatCs = document.getElementById('btnChatCs');
@@ -980,40 +1007,68 @@
       inputPass.type = inputPass.type === 'password' ? 'text' : 'password';
     });
 
-    // 4. UPDATE WIFI HANDLER
-    formUpdateWifi.addEventListener('submit', async (e) => {
+    // 4A. UPDATE SSID HANDLER (TERPISAH)
+    formUpdateSsid.addEventListener('submit', async (e) => {
       e.preventDefault();
       hideAlert(dashAlert);
       const ssid = inputSsid.value.trim();
-      const password = inputPass.value;
-
       if (!ssid) return showAlert(dashAlert, 'Nama WiFi tidak boleh kosong.');
-      if (password.length < 8) return showAlert(dashAlert, 'Kata sandi minimal harus 8 karakter.');
 
-      if (!confirm(`Konfirmasi Ubah WiFi:\n\n• Nama Baru: ${ssid}\n• Sandi Baru: ${password}\n\nPerangkat HP/Laptop Anda akan terputus sesaat dan harus disambungkan kembali dengan sandi baru ini. Lanjutkan?`)) {
+      if (!confirm(`Konfirmasi Ubah Nama WiFi:\n\n• Nama Baru: ${ssid}\n\nPerangkat Anda akan terputus sesaat dan perlu memilih nama WiFi baru ini untuk menyambung kembali. Lanjutkan?`)) {
         return;
       }
 
-      btnSaveWifi.disabled = true;
-      btnTextSave.textContent = 'Mengirim Perintah ke Modem...';
-      btnSpinnerSave.style.display = 'inline-block';
+      btnSaveSsid.disabled = true;
+      btnTextSaveSsid.textContent = 'Menyimpan Nama WiFi...';
+      btnSpinnerSaveSsid.style.display = 'inline-block';
 
       try {
-        const res = await apiRequest('/api/customer/update_wifi', 'POST', { ssid, password });
+        const res = await apiRequest('/api/customer/update_wifi', 'POST', { ssid });
         if (res.success) {
-          actualWifiPass = password;
-          updateMaskedPass();
-          inputPass.value = '';
-          showAlert(dashAlert, `🎉 <strong>Berhasil!</strong> Pengaturan WiFi berhasil diperbarui ke modem Anda.<br>Nama WiFi: <strong>${ssid}</strong>, Sandi: <strong>${password}</strong>.`, 'success');
+          showAlert(dashAlert, `🎉 <strong>Berhasil!</strong> Nama WiFi berhasil diubah menjadi: <strong>${ssid}</strong>.<br>Silakan sambungkan kembali HP/laptop Anda ke nama WiFi baru ini.`, 'success');
         } else {
-          showAlert(dashAlert, res.error || 'Gagal mengubah pengaturan WiFi modem.');
+          showAlert(dashAlert, res.error || 'Gagal mengubah nama WiFi modem.');
         }
       } catch (_) {
         showAlert(dashAlert, 'Gagal menghubungi server. Silakan coba kembali.');
       } finally {
-        btnSaveWifi.disabled = false;
-        btnTextSave.textContent = 'Simpan Perubahan WiFi';
-        btnSpinnerSave.style.display = 'none';
+        btnSaveSsid.disabled = false;
+        btnTextSaveSsid.textContent = '💾 Simpan Nama WiFi';
+        btnSpinnerSaveSsid.style.display = 'none';
+      }
+    });
+
+    // 4B. UPDATE PASSWORD HANDLER (TERPISAH)
+    formUpdatePass.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideAlert(dashAlert);
+      const password = inputPass.value.trim();
+      if (password.length < 8) return showAlert(dashAlert, 'Kata sandi minimal harus 8 karakter.');
+
+      if (!confirm(`Konfirmasi Ubah Kata Sandi:\n\n• Sandi Baru: ${password}\n\nPerangkat Anda akan terputus dan harus memasukkan kata sandi baru ini. Lanjutkan?`)) {
+        return;
+      }
+
+      btnSavePass.disabled = true;
+      btnTextSavePass.textContent = 'Menyimpan Kata Sandi...';
+      btnSpinnerSavePass.style.display = 'inline-block';
+
+      try {
+        const res = await apiRequest('/api/customer/update_wifi', 'POST', { password });
+        if (res.success) {
+          actualWifiPass = password;
+          updateMaskedPass();
+          inputPass.value = '';
+          showAlert(dashAlert, `🎉 <strong>Berhasil!</strong> Kata sandi WiFi berhasil diperbarui menjadi: <strong>${password}</strong>.<br>Silakan sambungkan kembali HP/laptop Anda menggunakan sandi baru ini.`, 'success');
+        } else {
+          showAlert(dashAlert, res.error || 'Gagal mengubah kata sandi WiFi modem.');
+        }
+      } catch (_) {
+        showAlert(dashAlert, 'Gagal menghubungi server. Silakan coba kembali.');
+      } finally {
+        btnSavePass.disabled = false;
+        btnTextSavePass.textContent = '💾 Simpan Kata Sandi';
+        btnSpinnerSavePass.style.display = 'none';
       }
     });
 
