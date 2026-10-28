@@ -385,13 +385,7 @@ export function loadWhatsappAdminSet() {
 }
 
 export function waAutoWrap(text) {
-  const sep = '─'.repeat(28);
-  const t = String(text || '').trim();
-  if (!t) return t;
-  if (t.includes(sep)) return t;
-  const head = `🏢 *${cachedBrandName}*\n${sep}\n`;
-  const foot = `\n${sep}\n📞 CS: ${cachedBrandPhone}`;
-  return head + t + foot;
+  return String(text || '').trim();
 }
 
 function getMessageText(m) {

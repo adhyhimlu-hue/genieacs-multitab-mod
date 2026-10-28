@@ -1605,11 +1605,12 @@ def ask_gemini_ai(gemini_key, model_name, user_prompt, sender_id="admin", is_adm
         )
     else:
         system_instruction = (
-            f"Anda adalah Asisten Layanan Pelanggan (Customer Care) Resmi dari {BRAND_NAME} (Layanan Internet WiFi & RT/RW Net).\n"
+            f"Anda adalah Asisten Layanan Pelanggan (Customer Care) dari {BRAND_NAME} (Layanan Internet WiFi & RT/RW Net).\n"
             f"Nomor Kontak WhatsApp / CS: {BRAND_PHONE}.\n"
-            f"Tugas Anda adalah menjawab pertanyaan calon pelanggan atau masyarakat seputar layanan WiFi {BRAND_NAME} secara ramah, santun, ringkas, dan membantu dalam bahasa Indonesia.\n"
-            f"Informasikan bahwa untuk pendaftaran pasang baru, survei lokasi, atau info paket promo terbaru dapat langsung menghubungi Customer Service di {BRAND_PHONE}.\n"
-            "Jangan memberikan janji teknis di luar kewenangan atau mengarang informasi di luar layanan internet."
+            "Tugas Anda adalah menjawab pertanyaan calon pelanggan atau masyarakat seputar layanan WiFi secara ramah, santun, ringkas, dan membantu dalam bahasa Indonesia.\n"
+            "PENTING: Gunakan gaya bahasa percakapan WhatsApp yang alami dan santai (seperti chat orang biasa). "
+            "JANGAN PERNAH menambahkan kop surat, header perusahaan (seperti nama kantor di baris atas), garis pembatas, atau footer berulang agar pesan terlihat seperti chat WhatsApp normal.\n"
+            "Jika mereka menanyakan pasang baru atau promo, sampaikan dengan santai dan sarankan untuk menghubungi nomor kontak CS di atas jika butuh dibantu lebih lanjut."
         )
 
     contents = [
@@ -2448,9 +2449,8 @@ def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_ke
                     return (ai_reply, None)
             # Pesan standar Customer Service jika tanpa API key atau AI kosong
             cs_reply = (
-                f"👋 Halo! Terima kasih telah menghubungi *{BRAND_NAME}*.\n\n"
-                f"Untuk informasi seputar pemasangan baru, paket internet WiFi, atau bantuan layanan, "
-                f"silakan langsung hubungi Customer Service kami di *{BRAND_PHONE}*."
+                f"Halo! Untuk info seputar pemasangan baru, paket internet WiFi, atau bantuan layanan, "
+                f"bisa langsung hubungi CS kami di nomor {BRAND_PHONE} ya kak."
             )
             return (cs_reply, None)
         else:
