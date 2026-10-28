@@ -4316,7 +4316,7 @@ class BotConfigHandler(BaseHTTPRequestHandler):
             for hk, hv in extra_headers.items():
                 self.send_header(hk, hv)
         self.end_headers()
-        self.wfile.write(json.dumps(data).encode("utf-8"))
+        self.wfile.write(json.dumps(data, default=str).encode("utf-8"))
 
     def do_GET(self):
         parsed = urlparse(self.path)
