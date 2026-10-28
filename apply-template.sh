@@ -251,6 +251,15 @@ elif [ -f "./agent.py" ]; then
 fi
 chmod +x /opt/genieacs-agent/agent.py 2>/dev/null || true
 
+# Salin aset frontend public (mywifi.html, peta.html, dsb)
+if [ -d "${SCRIPT_DIR}/public" ]; then
+  mkdir -p /opt/genieacs-agent/public
+  cp -rf "${SCRIPT_DIR}/public"/* /opt/genieacs-agent/public/ 2>/dev/null || true
+  if [ -n "$GENIE_DIR" ] && [ -d "$GENIE_DIR/public" ]; then
+    cp -rf "${SCRIPT_DIR}/public"/* "$GENIE_DIR/public/" 2>/dev/null || true
+  fi
+fi
+
 # CLI Helper set-bot
 if [ -f "${SCRIPT_DIR}/set-bot.py" ]; then
   cp "${SCRIPT_DIR}/set-bot.py" /opt/genieacs-agent/set-bot.py

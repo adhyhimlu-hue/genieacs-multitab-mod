@@ -19,6 +19,7 @@ import hmac
 import hashlib
 import base64
 import secrets
+import random
 from urllib.parse import quote, urlparse
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -3463,6 +3464,11 @@ HTML_LOGIN_PAGE = """<!DOCTYPE html>
       <button type="submit" id="btnSubmit" class="btn-login">Masuk ke Pengaturan</button>
     </form>
     
+        <div style="text-align: center; margin-top: 18px;">
+      <a href="/mywifi" style="color: #38bdf8; text-decoration: none; font-size: 0.85rem; font-weight: 500;">
+        📶 Masuk ke Portal Mandiri WiFi Pelanggan &rarr;
+      </a>
+    </div>
     <div class="footer">ALIJAYA NET TR-069 Management</div>
   </div>
 
@@ -3510,7 +3516,60 @@ HTML_LOGIN_PAGE = """<!DOCTYPE html>
 </html>
 """
 
+
 ACTIVE_ADMIN_SESSIONS = {}
+CUSTOMER_OTP_STORE = {}    # clean_phone -> {"otp": "1234", "expires": ts, "attempts": 0, "resend_after": ts, "device_id": dev_id}
+CUSTOMER_SESSIONS = {}     # token -> {"phone": clean_phone, "device_id": dev_id, "expires": ts, "created_at": ts}
+
+def send_whatsapp_message_local(to_phone, text):
+    try:
+        clean_target = normalize_phone(to_phone)
+        r = requests.post("http://127.0.0.1:7559/send", json={"to": clean_target or str(to_phone), "text": str(text)}, timeout=6.0)
+        if r.status_code == 200:
+            return r.json().get("success", False)
+        return False
+    except Exception as e:
+        logger.warning(f"Failed to send local WA message to {to_phone}: {e}")
+        return False
+
+def get_authenticated_customer_session(handler):
+    token = handler.headers.get("X-Customer-Token")
+    if not token:
+        cookies = handler.parse_cookies()
+        token = cookies.get("customer_token")
+    if not token:
+        parsed = urlparse(handler.path)
+        qs = parse_qs(parsed.query)
+        tok_list = qs.get("token", [])
+        if tok_list:
+            token = tok_list[0]
+
+    if not token or token not in CUSTOMER_SESSIONS:
+        return None
+
+    sess = CUSTOMER_SESSIONS[token]
+    if sess.get("expires", 0) < time.time():
+        CUSTOMER_SESSIONS.pop(token, None)
+        return None
+    return sess
+
+def get_customer_portal_html():
+    cand_paths = [
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "public", "mywifi.html"),
+        "/opt/genieacs-agent/public/mywifi.html",
+        "/usr/lib/node_modules/genieacs/public/mywifi.html",
+        "/usr/local/lib/node_modules/genieacs/public/mywifi.html",
+        "/opt/genieacs/public/mywifi.html"
+    ]
+    for cp in cand_paths:
+        if os.path.exists(cp):
+            try:
+                with open(cp, "r", encoding="utf-8") as f:
+                    return f.read()
+            except Exception:
+                pass
+    return "<h3>Portal Mandiri WiFi belum terpasang (mywifi.html tidak ditemukan).</h3>"
+
 
 def get_jwt_secret():
     secret = os.environ.get("GENIEACS_UI_JWT_SECRET") or os.environ.get("UI_JWT_SECRET")
@@ -4178,9 +4237,123 @@ class BotConfigHandler(BaseHTTPRequestHandler):
             data = get_geo_odps_data()
             self.send_json(data)
             return
+        # Jalur Akses Portal Mandiri Pelanggan (Bebas Domain & Agnostik)
+        if path in ("/mywifi", "/mywifi.html", "/portal", "/pelanggan"):
+            self.send_html(get_customer_portal_html())
+            return
+
+        if path in ("/admin", "/admin/"):
+            if self.is_authenticated_admin():
+                self.send_html(HTML_CONFIG_PAGE)
+            else:
+                self.send_html(HTML_LOGIN_PAGE)
+            return
+
+        if path == "/api/customer/info":
+            sess = get_authenticated_customer_session(self)
+            if not sess:
+                self.send_json({"success": False, "error": "Sesi Anda telah berakhir. Silakan login kembali."}, status=401)
+                return
+
+            dev_id = sess.get("device_id")
+            dev = find_device(dev_id)
+            if not dev:
+                self.send_json({"success": False, "error": "Perangkat modem tidak ditemukan di database."}, status=404)
+                return
+
+            vp = dev.get("VirtualParameters", {})
+            igd = dev.get("InternetGatewayDevice", {})
+
+            # Customer name & PPPoE
+            pppoe = get_device_pppoe_username(dev)
+            cust_name = dev.get("_custom_customer_name") or ""
+            if not cust_name:
+                db = get_db()
+                if db is not None:
+                    loc = db.device_locations.find_one({"_id": dev.get("_id")})
+                    if loc and loc.get("name"):
+                        cust_name = loc.get("name")
+            if not cust_name:
+                cust_name = pppoe or "Pelanggan"
+
+            # Online status
+            last_inform = dev.get("_lastInform")
+            online = False
+            last_inform_str = "-"
+            if last_inform:
+                diff_sec = get_datetime_diff_seconds(last_inform)
+                online = diff_sec < 600
+                last_inform_str = f"{int(diff_sec//60)} menit lalu" if diff_sec >= 60 else "Baru saja"
+
+            # Redaman (RX Power)
+            rx = vp.get("RXPower", {}).get("_value") or "-"
+            rx_badge_text = "Sinyal Normal"
+            rx_badge_class = "badge-success"
+            if rx != "-":
+                try:
+                    rx_num = float(str(rx).replace("dBm", "").strip())
+                    if rx_num >= -24.0:
+                        rx_badge_text = "Sinyal Sangat Bagus 🟢"
+                        rx_badge_class = "badge-success"
+                    elif rx_num >= -27.0:
+                        rx_badge_text = "Sinyal Cukup / Normal 🟡"
+                        rx_badge_class = "badge-warning"
+                    else:
+                        rx_badge_text = "Sinyal Lemah / Redaman Tinggi 🔴"
+                        rx_badge_class = "badge-danger"
+                except Exception:
+                    pass
+                if not str(rx).endswith("dBm"):
+                    rx = f"{rx} dBm"
+
+            uptime = vp.get("getdeviceuptime", {}).get("_value") or vp.get("uptimeDevice", {}).get("_value") or "-"
+            wlan1 = igd.get("LANDevice", {}).get("1", {}).get("WLANConfiguration", {}).get("1", {})
+            ssid = wlan1.get("SSID", {}).get("_value") or vp.get("WlanSSID", {}).get("_value") or "-"
+            wifi_pass = (
+                wlan1.get("KeyPassphrase", {}).get("_value") or
+                wlan1.get("PreSharedKey", {}).get("1", {}).get("KeyPassphrase", {}).get("_value") or
+                vp.get("WlanPassword", {}).get("_value") or
+                ""
+            )
+            clients = (
+                wlan1.get("TotalAssociations", {}).get("_value") or
+                vp.get("activedevices", {}).get("_value") or
+                "0"
+            )
+
+            product_class = dev.get("DeviceID", {}).get("ProductClass", {}).get("_value") or ""
+            manufacturer = dev.get("DeviceID", {}).get("Manufacturer", {}).get("_value") or ""
+            model_str = f"{manufacturer} {product_class}".strip() or "ONT Router"
+
+            cfgs = get_config()
+            b_name = cfgs.get("agent.brand.name", BRAND_NAME)
+            b_phone = cfgs.get("agent.brand.phone", BRAND_PHONE)
+
+            data = {
+                "success": True,
+                "data": {
+                    "customer_name": cust_name,
+                    "pppoe_user": pppoe,
+                    "online": online,
+                    "last_inform": last_inform_str,
+                    "rx_power": rx,
+                    "rx_badge_text": rx_badge_text,
+                    "rx_badge_class": rx_badge_class,
+                    "uptime": uptime,
+                    "clients_count": clients,
+                    "ssid": ssid,
+                    "wifi_password": wifi_pass,
+                    "model": model_str,
+                    "brand_name": b_name,
+                    "brand_phone": b_phone
+                }
+            }
+            self.send_json(data)
+            return
+
         if not self.is_authenticated_admin():
             if self.path == "/" or self.path.startswith("/?"):
-                self.send_html(HTML_LOGIN_PAGE)
+                self.send_html(get_customer_portal_html())
             else:
                 self.send_json({"success": False, "error": "Akses ditolak: Harap login sebagai administrator terlebih dahulu."}, status=401)
             return
@@ -4300,6 +4473,160 @@ class BotConfigHandler(BaseHTTPRequestHandler):
             cookie_val = "agent_session=deleted; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT"
             self.send_json({"success": True, "message": "Logout berhasil"}, extra_headers={"Set-Cookie": cookie_val})
             return
+
+        # Customer Portal Public APIs (Secured by WhatsApp OTP & Sessions)
+        if path == "/api/customer/request_otp":
+            phone_raw = req.get("phone", "")
+            if not phone_raw:
+                self.send_json({"success": False, "error": "Nomor WhatsApp wajib diisi."})
+                return
+
+            clean_phone = normalize_phone(phone_raw)
+            if not clean_phone or len(clean_phone) < 8:
+                self.send_json({"success": False, "error": "Nomor WhatsApp tidak valid."})
+                return
+
+            now = time.time()
+            if clean_phone in CUSTOMER_OTP_STORE:
+                existing = CUSTOMER_OTP_STORE[clean_phone]
+                if existing.get("resend_after", 0) > now:
+                    remaining = int(existing["resend_after"] - now)
+                    self.send_json({"success": False, "error": f"Harap tunggu {remaining} detik sebelum meminta kode OTP baru.", "cooldown": remaining})
+                    return
+
+            dev = find_device_by_phone(clean_phone)
+            if not dev:
+                cfgs = get_config()
+                b_phone = cfgs.get("agent.brand.phone", BRAND_PHONE)
+                self.send_json({
+                    "success": False,
+                    "error": f"Nomor WhatsApp ({clean_phone}) belum terdaftar pada sistem jaringan kami. Pastikan nomor sesuai saat pendaftaran atau hubungi CS di {b_phone}."
+                })
+                return
+
+            otp = f"{random.randint(1000, 9999)}"
+            CUSTOMER_OTP_STORE[clean_phone] = {
+                "otp": otp,
+                "expires": now + 300,
+                "resend_after": now + 45,
+                "attempts": 0,
+                "device_id": dev["_id"]
+            }
+
+            cfgs = get_config()
+            b_name = cfgs.get("agent.brand.name", BRAND_NAME)
+            wa_text = (
+                f"Halo! 👋\n\n"
+                f"Kode verifikasi OTP untuk masuk ke Portal Mandiri WiFi {b_name} Anda adalah: *{otp}*\n\n"
+                f"Demi keamanan WiFi Anda, jangan berikan kode ini kepada siapapun.\n"
+                f"Kode berlaku selama 5 menit."
+            )
+            send_whatsapp_message_local(clean_phone, wa_text)
+
+            self.send_json({"success": True, "message": "Kode OTP 4 digit telah dikirim ke WhatsApp Anda.", "cooldown": 45})
+            return
+
+        if path == "/api/customer/verify_otp":
+            phone_raw = req.get("phone", "")
+            otp_input = str(req.get("otp", "")).strip()
+            clean_phone = normalize_phone(phone_raw)
+
+            if not clean_phone or not otp_input:
+                self.send_json({"success": False, "error": "Nomor dan kode OTP wajib diisi."})
+                return
+
+            if clean_phone not in CUSTOMER_OTP_STORE:
+                self.send_json({"success": False, "error": "Kode OTP tidak ditemukan atau telah kedaluwarsa. Silakan minta kode baru."})
+                return
+
+            stored = CUSTOMER_OTP_STORE[clean_phone]
+            now = time.time()
+            if stored.get("expires", 0) < now:
+                CUSTOMER_OTP_STORE.pop(clean_phone, None)
+                self.send_json({"success": False, "error": "Kode OTP telah kedaluwarsa. Silakan minta kode baru."})
+                return
+
+            stored["attempts"] = stored.get("attempts", 0) + 1
+            if stored["attempts"] > 5:
+                CUSTOMER_OTP_STORE.pop(clean_phone, None)
+                self.send_json({"success": False, "error": "Terlalu banyak percobaan salah. Silakan minta kode OTP baru."})
+                return
+
+            if stored.get("otp") != otp_input:
+                self.send_json({"success": False, "error": "Kode OTP salah. Pastikan 4 digit yang Anda masukkan sesuai."})
+                return
+
+            dev_id = stored.get("device_id")
+            CUSTOMER_OTP_STORE.pop(clean_phone, None)
+
+            token = secrets.token_hex(24)
+            CUSTOMER_SESSIONS[token] = {
+                "phone": clean_phone,
+                "device_id": dev_id,
+                "expires": now + 86400,
+                "created_at": now
+            }
+            cookie_val = f"customer_token={token}; Path=/; SameSite=Lax; Max-Age=86400"
+            self.send_json({"success": True, "token": token}, extra_headers={"Set-Cookie": cookie_val})
+            return
+
+        if path == "/api/customer/update_wifi":
+            sess = get_authenticated_customer_session(self)
+            if not sess:
+                self.send_json({"success": False, "error": "Sesi login Anda telah berakhir. Silakan login kembali."}, status=401)
+                return
+
+            new_ssid = str(req.get("ssid", "")).strip()
+            new_pass = str(req.get("password", "")).strip()
+
+            if not new_ssid:
+                self.send_json({"success": False, "error": "Nama WiFi tidak boleh kosong."})
+                return
+            if len(new_pass) < 8:
+                self.send_json({"success": False, "error": "Kata sandi WiFi minimal harus 8 karakter."})
+                return
+
+            dev = find_device(sess.get("device_id"))
+            if not dev:
+                self.send_json({"success": False, "error": "Perangkat modem tidak ditemukan."}, status=404)
+                return
+
+            ok, msg = set_wifi_credentials(dev, new_ssid=new_ssid, new_password=new_pass)
+            if ok:
+                self.send_json({"success": True, "message": "Pengaturan WiFi berhasil diperbarui!"})
+            else:
+                self.send_json({"success": False, "error": f"Gagal memperbarui WiFi: {msg}"})
+            return
+
+        if path == "/api/customer/reboot":
+            sess = get_authenticated_customer_session(self)
+            if not sess:
+                self.send_json({"success": False, "error": "Sesi login Anda telah berakhir. Silakan login kembali."}, status=401)
+                return
+
+            dev = find_device(sess.get("device_id"))
+            if not dev:
+                self.send_json({"success": False, "error": "Perangkat modem tidak ditemukan."}, status=404)
+                return
+
+            ok, msg = reboot_device_task(dev)
+            if ok:
+                self.send_json({"success": True, "message": "Perintah restart berhasil dikirim ke modem."})
+            else:
+                self.send_json({"success": False, "error": f"Gagal restart modem: {msg}"})
+            return
+
+        if path == "/api/customer/logout":
+            token = self.headers.get("X-Customer-Token")
+            if not token:
+                cookies = self.parse_cookies()
+                token = cookies.get("customer_token")
+            if token and token in CUSTOMER_SESSIONS:
+                CUSTOMER_SESSIONS.pop(token, None)
+            cookie_val = "customer_token=deleted; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT"
+            self.send_json({"success": True, "message": "Logout berhasil"}, extra_headers={"Set-Cookie": cookie_val})
+            return
+
 
         # Check authentication for all protected endpoints
         if not self.is_authenticated_admin():
