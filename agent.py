@@ -2887,6 +2887,30 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
           <textarea id="wa_admin_numbers" name="wa_admin_numbers" placeholder="Contoh: 081947215703, 081234567890"></textarea>
           <div class="hint">Nomor yang memiliki hak akses perintah administratif (cek, redaman, reboot, wifion/off, ssid, dll). Pisahkan koma jika lebih dari satu.</div>
         </div>
+
+        <div style="background: var(--card-inner); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-top: 14px; margin-bottom: 6px;">
+          <h4 style="font-size: 0.92rem; color: #38bdf8; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+            📶 Layanan OTP WhatsApp (Portal Mandiri WiFi Pelanggan)
+          </h4>
+          <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px; line-height: 1.4;">
+            Pelanggan login ke web mandiri (ubah nama WiFi / password / cek redaman) menggunakan kode OTP 4 digit yang dikirimkan otomatis via WhatsApp.
+          </p>
+
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label>Status Layanan OTP Pelanggan:</label>
+            <select id="otp_enabled" name="otp_enabled">
+              <option value="true">Aktif (Enabled) 🟢</option>
+              <option value="false">Nonaktif (Disabled) 🔴</option>
+            </select>
+            <div class="hint">Jika dinonaktifkan, permintaan OTP login pelanggan di portal mandiri akan ditolak.</div>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 0;">
+            <label>Waktu Expired Kode OTP (Menit):</label>
+            <input type="number" id="otp_expiry_minutes" name="otp_expiry_minutes" min="1" max="60" value="5" placeholder="Contoh: 5">
+            <div class="hint">Berapa menit kode OTP 4 digit berlaku sebelum kedaluwarsa (default: 5 menit).</div>
+          </div>
+        </div>
       </div>
 
       <!-- TAB 2: TELEGRAM BOT -->
@@ -3175,6 +3199,8 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
         document.getElementById('gemini_key').value = data.gemini_key || '';
         document.getElementById('wa_enabled').value = data.wa_enabled !== undefined ? String(data.wa_enabled) : 'true';
         document.getElementById('wa_admin_numbers').value = data.wa_admin_numbers || '';
+        document.getElementById('otp_enabled').value = data.otp_enabled !== undefined ? String(data.otp_enabled) : 'true';
+        document.getElementById('otp_expiry_minutes').value = data.otp_expiry_minutes || '5';
       })
       .catch(err => showAlert('❌ Gagal memuat konfigurasi: ' + err.message, false));
 
@@ -3276,7 +3302,9 @@ HTML_CONFIG_PAGE = """<!DOCTYPE html>
         brand_phone: document.getElementById('brand_phone').value,
         gemini_key: document.getElementById('gemini_key').value,
         wa_enabled: document.getElementById('wa_enabled').value,
-        wa_admin_numbers: document.getElementById('wa_admin_numbers').value
+        wa_admin_numbers: document.getElementById('wa_admin_numbers').value,
+        otp_enabled: document.getElementById('otp_enabled').value,
+        otp_expiry_minutes: document.getElementById('otp_expiry_minutes').value
       };
 
       botFetch('/api/config', {
@@ -3989,11 +4017,22 @@ def save_geo_device_data(data):
     if not dev_id:
         return {"success": False, "message": "ID Perangkat tidak boleh kosong"}
     
+    existing = db.device_locations.find_one({"_id": dev_id})
     try:
-        lat = float(data.get("lat", 0.0))
-        lng = float(data.get("lng", 0.0))
+        raw_lat = data.get("lat")
+        raw_lng = data.get("lng")
+        if (raw_lat is None or str(raw_lat).strip() in ("", "0", "0.0", "None")) and existing:
+            lat = float(existing.get("lat", 0.0))
+        else:
+            lat = float(raw_lat or 0.0)
+
+        if (raw_lng is None or str(raw_lng).strip() in ("", "0", "0.0", "None")) and existing:
+            lng = float(existing.get("lng", 0.0))
+        else:
+            lng = float(raw_lng or 0.0)
     except (ValueError, TypeError):
-        return {"success": False, "message": "Koordinat Latitude / Longitude tidak valid"}
+        lat = float(existing.get("lat", 0.0)) if existing else 0.0
+        lng = float(existing.get("lng", 0.0)) if existing else 0.0
 
     doc = {
         "_id": dev_id,
@@ -4085,11 +4124,22 @@ def save_geo_odp_data(data):
         count = db.odp_locations.count_documents({}) + 1
         odp_id = f"ODP-ALJ-{count:02d}"
     
+    existing = db.odp_locations.find_one({"_id": odp_id})
     try:
-        lat = float(data.get("lat", 0.0))
-        lng = float(data.get("lng", 0.0))
+        raw_lat = data.get("lat")
+        raw_lng = data.get("lng")
+        if (raw_lat is None or str(raw_lat).strip() in ("", "0", "0.0", "None")) and existing:
+            lat = float(existing.get("lat", 0.0))
+        else:
+            lat = float(raw_lat or 0.0)
+
+        if (raw_lng is None or str(raw_lng).strip() in ("", "0", "0.0", "None")) and existing:
+            lng = float(existing.get("lng", 0.0))
+        else:
+            lng = float(raw_lng or 0.0)
     except (ValueError, TypeError):
-        return {"success": False, "message": "Koordinat Latitude / Longitude tidak valid"}
+        lat = float(existing.get("lat", 0.0)) if existing else 0.0
+        lng = float(existing.get("lng", 0.0)) if existing else 0.0
 
     doc = {
         "_id": odp_id,
@@ -4370,7 +4420,9 @@ class BotConfigHandler(BaseHTTPRequestHandler):
                 "brand_phone": cfgs.get("agent.brand.phone", BRAND_PHONE),
                 "gemini_key": cfgs.get("agent.gemini.apiKey", ""),
                 "wa_enabled": cfgs.get("agent.whatsapp.enabled", "true"),
-                "wa_admin_numbers": cfgs.get("agent.whatsapp.admin_numbers", cfgs.get("agent.brand.phone", BRAND_PHONE))
+                "wa_admin_numbers": cfgs.get("agent.whatsapp.admin_numbers", cfgs.get("agent.brand.phone", BRAND_PHONE)),
+                "otp_enabled": cfgs.get("agent.otp.enabled", "true"),
+                "otp_expiry_minutes": cfgs.get("agent.otp.expiry_minutes", "5")
             }
             self.send_json(data)
         elif self.path == "/api/whatsapp/status":
@@ -4476,6 +4528,12 @@ class BotConfigHandler(BaseHTTPRequestHandler):
 
         # Customer Portal Public APIs (Secured by WhatsApp OTP & Sessions)
         if path == "/api/customer/request_otp":
+            cfgs = get_config()
+            otp_enabled = cfgs.get("agent.otp.enabled", "true").lower() in ("true", "1", "yes")
+            if not otp_enabled:
+                self.send_json({"success": False, "error": "Layanan portal mandiri pelanggan saat ini sedang dinonaktifkan oleh administrator."})
+                return
+
             phone_raw = req.get("phone", "")
             if not phone_raw:
                 self.send_json({"success": False, "error": "Nomor WhatsApp wajib diisi."})
@@ -4496,7 +4554,6 @@ class BotConfigHandler(BaseHTTPRequestHandler):
 
             dev = find_device_by_phone(clean_phone)
             if not dev:
-                cfgs = get_config()
                 b_phone = cfgs.get("agent.brand.phone", BRAND_PHONE)
                 self.send_json({
                     "success": False,
@@ -4504,22 +4561,29 @@ class BotConfigHandler(BaseHTTPRequestHandler):
                 })
                 return
 
+            try:
+                exp_min = int(cfgs.get("agent.otp.expiry_minutes", "5"))
+                if exp_min < 1:
+                    exp_min = 1
+            except Exception:
+                exp_min = 5
+            expiry_seconds = exp_min * 60
+
             otp = f"{random.randint(1000, 9999)}"
             CUSTOMER_OTP_STORE[clean_phone] = {
                 "otp": otp,
-                "expires": now + 300,
+                "expires": now + expiry_seconds,
                 "resend_after": now + 45,
                 "attempts": 0,
                 "device_id": dev["_id"]
             }
 
-            cfgs = get_config()
             b_name = cfgs.get("agent.brand.name", BRAND_NAME)
             wa_text = (
                 f"Halo! 👋\n\n"
                 f"Kode verifikasi OTP untuk masuk ke Portal Mandiri WiFi {b_name} Anda adalah: *{otp}*\n\n"
                 f"Demi keamanan WiFi Anda, jangan berikan kode ini kepada siapapun.\n"
-                f"Kode berlaku selama 5 menit."
+                f"Kode berlaku selama {exp_min} menit."
             )
             send_whatsapp_message_local(clean_phone, wa_text)
 
@@ -4647,7 +4711,9 @@ class BotConfigHandler(BaseHTTPRequestHandler):
                 "agent.brand.phone": f'"{req.get("brand_phone", BRAND_PHONE).strip()}"',
                 "agent.gemini.apiKey": f'"{req.get("gemini_key", "").strip()}"',
                 "agent.whatsapp.enabled": f'"{req.get("wa_enabled", "true").strip()}"',
-                "agent.whatsapp.admin_numbers": f'"{req.get("wa_admin_numbers", BRAND_PHONE).strip()}"'
+                "agent.whatsapp.admin_numbers": f'"{req.get("wa_admin_numbers", BRAND_PHONE).strip()}"',
+                "agent.otp.enabled": f'"{req.get("otp_enabled", "true").strip()}"',
+                "agent.otp.expiry_minutes": f'"{req.get("otp_expiry_minutes", "5").strip()}"'
             }
 
             for k, v in configs_to_save.items():
