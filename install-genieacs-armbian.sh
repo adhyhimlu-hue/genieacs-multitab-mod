@@ -371,6 +371,16 @@ for uri in ["mongodb://genie:genie@127.0.0.1:27017/genieacs", "mongodb://127.0.0
     try:
         c = pymongo.MongoClient(uri, serverSelectionTimeoutMS=1500)
         c.genieacs.config.delete_one({"_id": "ui-local-cache-hash"})
+        tab6_configs = {
+            'ui.multiTabs.6.label': "'INFO'",
+            'ui.multiTabs.6.route': "'info'",
+            'ui.multiTabs.6.components.0.type': "'tags'",
+            'ui.multiTabs.6.components.1.type': "'ping'",
+            'ui.multiTabs.6.components.2.type': "'customer-info'",
+            'ui.multiTabs.6.components.3.type': "'device-actions'"
+        }
+        for k, v in tab6_configs.items():
+            c.genieacs.config.replace_one({'_id': k}, {'_id': k, 'value': v}, upsert=True)
         break
     except Exception:
         pass
@@ -592,6 +602,9 @@ After=network.target mongod.service genieacs-nbi.service
 Type=simple
 User=root
 WorkingDirectory=/opt/genieacs-agent
+EnvironmentFile=-/opt/genieacs/genieacs.env
+EnvironmentFile=-/etc/default/genieacs
+EnvironmentFile=-/etc/genieacs.env
 ExecStart=/usr/bin/python3 /opt/genieacs-agent/agent.py
 Restart=always
 RestartSec=10

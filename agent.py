@@ -20,7 +20,7 @@ import hashlib
 import base64
 import secrets
 import random
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, urlparse, parse_qs
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 try:
@@ -84,6 +84,8 @@ def resolve_mongo_uri():
             except Exception:
                 pass
             client[db_name].command("ping")
+            # Verify actual database read access (ping alone does NOT verify MongoDB auth!)
+            client[db_name].devices.find_one({}, {"_id": 1})
             _RESOLVED_MONGO_URI = uri
             logger.info(f"MongoDB connected successfully via: {uri.split('@')[-1] if '@' in uri else uri}")
             return uri
@@ -113,6 +115,7 @@ def get_db():
                 except Exception:
                     pass
                 _CURRENT_MONGO_CLIENT[db_name].command("ping")
+                _CURRENT_MONGO_CLIENT[db_name].devices.find_one({}, {"_id": 1})
                 return _CURRENT_MONGO_CLIENT[db_name]
             except Exception:
                 _CURRENT_MONGO_CLIENT = None
@@ -127,6 +130,7 @@ def get_db():
         except Exception:
             pass
         client[db_name].command("ping")
+        client[db_name].devices.find_one({}, {"_id": 1})
         _CURRENT_MONGO_CLIENT = client
         return client[db_name]
     except Exception as e:
@@ -136,17 +140,24 @@ def get_db():
         return None
 
 def get_config():
-    db = get_db()
-    if db is None:
+    global _CURRENT_MONGO_CLIENT, _RESOLVED_MONGO_URI
+    try:
+        db = get_db()
+        if db is None:
+            return {}
+        cfgs = db.config.find({"_id": {"$regex": "^agent\\."}})
+        res = {}
+        for c in cfgs:
+            val = str(c.get("value", "")).strip()
+            while len(val) >= 2 and ((val.startswith("'") and val.endswith("'")) or (val.startswith('"') and val.endswith('"'))):
+                val = val[1:-1].strip()
+            res[c["_id"]] = val.strip()
+        return res
+    except Exception as e:
+        logger.error(f"Failed to fetch config from MongoDB: {e}")
+        _CURRENT_MONGO_CLIENT = None
+        _RESOLVED_MONGO_URI = None
         return {}
-    cfgs = db.config.find({"_id": {"$regex": "^agent\\."}})
-    res = {}
-    for c in cfgs:
-        val = str(c.get("value", "")).strip()
-        while len(val) >= 2 and ((val.startswith("'") and val.endswith("'")) or (val.startswith('"') and val.endswith('"'))):
-            val = val[1:-1].strip()
-        res[c["_id"]] = val.strip()
-    return res
 
 BRAND_NAME = "ALIJAYA NET"
 BRAND_PHONE = "081947215703"
@@ -4339,6 +4350,58 @@ class BotConfigHandler(BaseHTTPRequestHandler):
         if path == "/api/geo/devices":
             data = get_geo_devices_data()
             self.send_json(data)
+            return
+
+        if path == "/api/geo/device":
+            query_params = parse_qs(parsed.query)
+            dev_id = (query_params.get("id") or query_params.get("_id") or [""])[0].strip()
+            if not dev_id:
+                self.send_json({"success": False, "message": "Parameter id tidak boleh kosong"})
+                return
+            db = get_db()
+            if db is None:
+                self.send_json({"success": False, "message": "Database tidak terhubung"})
+                return
+            doc = db.device_locations.find_one({"_id": dev_id})
+            data = {}
+            if doc:
+                data = {
+                    "_id": str(doc.get("_id") or dev_id),
+                    "name": str(doc.get("name") or ""),
+                    "phone": str(doc.get("phone") or ""),
+                    "odp": str(doc.get("odp") or ""),
+                    "address": str(doc.get("address") or ""),
+                    "notes": str(doc.get("notes") or ""),
+                    "lat": float(doc.get("lat") or 0.0),
+                    "lng": float(doc.get("lng") or 0.0),
+                    "updated_at": str(doc.get("updated_at") or "")
+                }
+            else:
+                dev_raw = db.devices.find_one({"_id": dev_id})
+                pppoe = ""
+                cust_phone = ""
+                if dev_raw:
+                    vp = dev_raw.get("VirtualParameters", {})
+                    if isinstance(vp, dict):
+                        pppoe = vp.get("pppoeUsername") or ""
+                    for t in (dev_raw.get("_tags") or dev_raw.get("tags") or []):
+                        if isinstance(t, str):
+                            digits = re.sub(r"\D", "", t)
+                            if len(digits) >= 8 and (digits.startswith("08") or digits.startswith("628")):
+                                cust_phone = t
+                                break
+                data = {
+                    "_id": dev_id,
+                    "name": pppoe,
+                    "phone": cust_phone,
+                    "odp": "",
+                    "address": "",
+                    "notes": "",
+                    "lat": 0.0,
+                    "lng": 0.0,
+                    "updated_at": ""
+                }
+            self.send_json({"success": True, "data": data})
             return
 
         if path == "/api/geo/odps":
