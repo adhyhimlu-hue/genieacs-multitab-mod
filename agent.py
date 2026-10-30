@@ -1647,12 +1647,10 @@ def ask_gemini_ai(gemini_key, model_name, user_prompt, sender_id="admin", is_adm
             return fallback_admin_intent(user_prompt)
         return None
 
-    # Normalisasi model name agar kompatibel dengan API Gemini terbaru
-    use_model = model_name or "gemini-3.5-flash"
-    if "1.5" in use_model:
-        use_model = "gemini-3.5-flash"
-    m_clean = use_model if use_model.startswith("models/") else f"models/{use_model}"
-    url = f"https://generativelanguage.googleapis.com/v1beta/{m_clean}:generateContent?key={gemini_key}"
+    # Fallback model pintar (mengutamakan model cepat dengan kuota aktif)
+    candidate_models = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-flash-latest"]
+    if model_name and model_name not in candidate_models and "1.5" not in model_name:
+        candidate_models.insert(0, model_name)
     headers = {"Content-Type": "application/json"}
     
     if is_admin:
@@ -1693,9 +1691,21 @@ def ask_gemini_ai(gemini_key, model_name, user_prompt, sender_id="admin", is_adm
             payload["tools"] = [{"function_declarations": AI_SERVER_TOOLS}]
 
         try:
-            r = requests.post(url, headers=headers, json=payload, timeout=25)
-            if r.status_code != 200:
-                logger.warning(f"Gemini API status {r.status_code}: {r.text[:200]}")
+            r = None
+            for cm in candidate_models:
+                m_c = cm if cm.startswith("models/") else f"models/{cm}"
+                u = f"https://generativelanguage.googleapis.com/v1beta/{m_c}:generateContent?key={gemini_key}"
+                try:
+                    res = requests.post(u, headers=headers, json=payload, timeout=20)
+                    if res.status_code == 200:
+                        r = res
+                        break
+                    else:
+                        logger.warning(f"Gemini model {cm} status {res.status_code}: {res.text[:100]}")
+                except Exception as e_req:
+                    logger.warning(f"Gemini model {cm} request error: {e_req}")
+
+            if not r or r.status_code != 200:
                 break
 
             data = r.json()
@@ -1778,10 +1788,10 @@ def clean_text_for_speech(text):
     t = re.sub(r'InternetGatewayDevice\.[^\s]+', 'parameter modem', t)
     # Normalisasi spasi
     t = re.sub(r'\s+', ' ', t).strip()
-    # Batasi agar TTS tidak berbicara kepanjangan (maksimal ~60 kata pertama)
+    # Batasi agar TTS tidak berbicara kepanjangan (maksimal 45 kata, sisanya rujukan ke layar)
     words = t.split()
-    if len(words) > 60:
-        t = " ".join(words[:60]) + " dan seterusnya."
+    if len(words) > 45:
+        t = " ".join(words[:45]) + "... Rincian lengkapnya sudah saya tampilkan di layar."
     return t
 
 def text_to_speech_ogg(text, lang='id'):
@@ -4516,6 +4526,57 @@ class BotConfigHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
+
+        # Endpoint Streaming Neural TTS (id-ID-GadisNeural / id-ID-ArdiNeural)
+        if path in ("/api/voice/tts", "/bot-proxy/api/voice/tts", "/tts", "/api/tts"):
+            qs = parse_qs(parsed.query)
+            raw_text = (qs.get("text", [""])[0]).strip()
+            voice = (qs.get("voice", ["id-ID-GadisNeural"])[0]).strip()
+            if not raw_text:
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(b"Missing text parameter")
+                return
+
+            clean = clean_text_for_speech(raw_text)
+            if not clean:
+                clean = "Informasi selengkapnya sudah tampil di layar."
+
+            tmp_id = f"{int(time.time())}_{secrets.token_hex(4)}"
+            txt_path = f"/tmp/tts_{tmp_id}.txt"
+            mp3_path = f"/tmp/tts_{tmp_id}.mp3"
+            try:
+                with open(txt_path, "w", encoding="utf-8") as f_txt:
+                    f_txt.write(clean)
+                cmd = ["edge-tts", "--voice", voice, "-f", txt_path, "--write-media", mp3_path]
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, timeout=15)
+                if os.path.exists(mp3_path) and os.path.getsize(mp3_path) > 0:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "audio/mpeg")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.send_header("Cache-Control", "public, max-age=3600")
+                    self.end_headers()
+                    with open(mp3_path, "rb") as f_mp3:
+                        self.wfile.write(f_mp3.read())
+                    try:
+                        os.remove(txt_path)
+                        os.remove(mp3_path)
+                    except Exception:
+                        pass
+                    return
+            except Exception as e_tts:
+                logger.error(f"Neural TTS streaming error: {e_tts}")
+            finally:
+                try:
+                    if os.path.exists(txt_path):
+                        os.remove(txt_path)
+                except Exception:
+                    pass
+
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write(b"TTS failed")
+            return
 
         # Jalur Akses Peta & API Geolocation (Bebas CORS & Iframe)
         if path in ("/peta", "/peta.html"):
