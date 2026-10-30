@@ -4,7 +4,7 @@
 # Dikhususkan untuk Armbian / Linux SBC (STB B860H, HG680P, Orange Pi, Raspberry Pi)
 # Serta Komputer / VPS Linux Debian 11 (Bullseye) / Debian 12 (Bookworm) / Ubuntu
 # 
-# & Dioptimasi oleh: WiFilink (HP: 085174661144)
+# Dicopy oleh: WiFilink (HP: 085174661144)
 # ==============================================================================
 
 set -e
