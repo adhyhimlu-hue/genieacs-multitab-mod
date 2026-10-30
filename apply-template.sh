@@ -5,7 +5,7 @@
 # WAN (Add WAN/PPPoE), WLAN (Multi-SSID & Client RSSI), LAN (Port LAN & Hosts),
 # USER (Web GUI Direct Link), TR-069 (CWMP Config), dan Bebas Fault.
 #
-# Dibuat oleh: ALIJAYA NET (WhatsApp: 081947215703)
+# Dicopy oleh: ALTRA.NET (WhatsApp: 085174661144)
 # ==============================================================================
 
 set -e
@@ -21,11 +21,11 @@ NC='\033[0m'
 
 clear 2>/dev/null || true
 echo -e "${CYAN}╔══════════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║${BOLD}${GREEN}           🎨 ALIJAYA NET - TEMA & FITUR INFORMATIF GENIEACS          ${NC}${CYAN}║${NC}"
+echo -e "${CYAN}║${BOLD}${GREEN}           🎨 ALTRA.NET - TEMA & FITUR INFORMATIF GENIEACS          ${NC}${CYAN}║${NC}"
 echo -e "${CYAN}║${BOLD}${YELLOW}       Upgrade GenieACS Standar Menjadi Multi-Tab & Informatif        ${NC}${CYAN}║${NC}"
 echo -e "${CYAN}║                                                                      ║${NC}"
-echo -e "${CYAN}║${NC}  👑 ${BOLD}Pengembang${NC}         : ${GREEN}${BOLD}ALIJAYA NET${NC}                                    ${CYAN}║${NC}"
-echo -e "${CYAN}║${NC}  📱 ${BOLD}WhatsApp / Kontak${NC}  : ${YELLOW}${BOLD}081947215703${NC}                                   ${CYAN}║${NC}"
+echo -e "${CYAN}║${NC}  👑 ${BOLD}Pengembang${NC}         : ${GREEN}${BOLD}ALTRA.NET${NC}                                    ${CYAN}║${NC}"
+echo -e "${CYAN}║${NC}  📱 ${BOLD}WhatsApp / Kontak${NC}  : ${YELLOW}${BOLD}085174661144${NC}                                   ${CYAN}║${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
