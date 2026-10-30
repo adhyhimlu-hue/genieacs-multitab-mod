@@ -97,7 +97,7 @@ Gunakan metode ini jika Anda baru saja menginstall sistem operasi Linux (Armbian
 2. **Clone Repository atau Unduh File Installer**:
    ```bash
    cd /root
-   git clone https://github.com/alijayanet/genieacs-multitab-mod.git
+   git clone git@github.com:adhyhimlu-hue/genieacs-multitab-mod.git
    cd genieacs-multitab-mod
    ```
 
