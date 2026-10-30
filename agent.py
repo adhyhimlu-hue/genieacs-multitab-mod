@@ -1747,7 +1747,154 @@ def ask_gemini_ai(gemini_key, model_name, user_prompt, sender_id="admin", is_adm
 # TELEGRAM API HELPERS
 # ==============================================================================
 
-def send_telegram(token, chat_id, text, parse_mode="Markdown", reply_markup=None):
+
+# ==============================================================================
+# ALIJAYA NET - VOICE COMMAND & VOICE REPLY (STT via Gemini & TTS via gTTS)
+# ==============================================================================
+
+VOICE_PERSISTENT_USERS = set()
+VOICE_SESSION_USERS = set()
+
+def is_voice_reply_active(chat_id):
+    cid = str(chat_id)
+    return (cid in VOICE_PERSISTENT_USERS) or (cid in VOICE_SESSION_USERS)
+
+def clean_text_for_speech(text):
+    if not text:
+        return ""
+    # Hapus format markdown
+    t = re.sub(r'[*_`~#\[\]\(\)\>\+=\|{}.!-]', ' ', str(text))
+    # Hapus tautan URL
+    t = re.sub(r'https?://\S+|www\.\S+', '', t)
+    # Hapus garis pemisah dan bullets
+    t = re.sub(r'[━─═\-_]{2,}', ' ', t)
+    t = re.sub(r'[•►✔️✅❌⚠️🔔💡📌🔍🚀📶🌐📊👥🔄🆕❓💳💸🏢📞🏠👤📱🤖🌓]', ' ', t)
+    # Hapus label teknis TR-069 yang berulang
+    t = re.sub(r'InternetGatewayDevice\.[^\s]+', 'parameter modem', t)
+    # Normalisasi spasi
+    t = re.sub(r'\s+', ' ', t).strip()
+    # Batasi agar TTS tidak berbicara kepanjangan (maksimal ~60 kata pertama)
+    words = t.split()
+    if len(words) > 60:
+        t = " ".join(words[:60]) + " dan seterusnya."
+    return t
+
+def text_to_speech_ogg(text, lang='id'):
+    try:
+        clean = clean_text_for_speech(text)
+        if not clean or len(clean) < 2:
+            return None
+        tmp_id = f"{int(time.time())}_{secrets.token_hex(4)}"
+        mp3_path = f"/tmp/reply_{tmp_id}.mp3"
+        ogg_path = f"/tmp/reply_{tmp_id}.ogg"
+        
+        from gtts import gTTS
+        tts = gTTS(text=clean, lang=lang)
+        tts.save(mp3_path)
+        
+        cmd = [
+            "ffmpeg", "-y", "-i", mp3_path,
+            "-c:a", "libopus", "-b:a", "32k", "-vbr", "on",
+            ogg_path
+        ]
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        if os.path.exists(mp3_path):
+            os.remove(mp3_path)
+        if os.path.exists(ogg_path) and os.path.getsize(ogg_path) > 0:
+            return ogg_path
+        return None
+    except Exception as e:
+        logger.error(f"TTS generation error: {e}")
+        return None
+
+def send_telegram_voice(token, chat_id, ogg_path, caption=None):
+    if not ogg_path or not os.path.exists(ogg_path):
+        return False
+    url = f"https://api.telegram.org/bot{token}/sendVoice"
+    try:
+        with open(ogg_path, "rb") as f:
+            files = {"voice": ("voice.ogg", f, "audio/ogg")}
+            data = {"chat_id": chat_id}
+            if caption:
+                data["caption"] = caption
+            r = requests.post(url, data=data, files=files, timeout=20)
+            return r.status_code == 200
+    except Exception as e:
+        logger.error(f"Failed to send Telegram voice to {chat_id}: {e}")
+        return False
+
+def download_telegram_file(token, file_id):
+    try:
+        url_info = f"https://api.telegram.org/bot{token}/getFile?file_id={file_id}"
+        r = requests.get(url_info, timeout=10)
+        if r.status_code != 200:
+            return None
+        info = r.json()
+        file_path = info.get("result", {}).get("file_path")
+        if not file_path:
+            return None
+        download_url = f"https://api.telegram.org/file/bot{token}/{file_path}"
+        r_down = requests.get(download_url, timeout=25)
+        if r_down.status_code == 200:
+            return r_down.content
+        return None
+    except Exception as e:
+        logger.error(f"Failed to download Telegram file {file_id}: {e}")
+        return None
+
+def transcribe_audio_with_gemini(gemini_key, model_name, audio_bytes, mime_type="audio/ogg"):
+    if not is_valid_token(gemini_key) or not audio_bytes:
+        return None
+    try:
+        # Gunakan model gemini yang support audio
+        use_model = model_name if ("flash" in model_name or "pro" in model_name) else "gemini-1.5-flash"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{use_model}:generateContent?key={gemini_key}"
+        headers = {"Content-Type": "application/json"}
+        b64_audio = base64.b64encode(audio_bytes).decode("utf-8")
+        
+        prompt = (
+            "Dengarkan rekaman suara bahasa Indonesia ini dengan cermat. "
+            "Transkripsikan isi ucapannya menjadi teks kalimat perintah yang singkat, jelas, dan akurat. "
+            "Contoh jika mendengar ucapan 'cek status modem': tuliskan hanya 'cek status modem'. "
+            "JANGAN tambahkan tanda kutip, jangan ada awalan seperti 'Teks transkripsi:', atau komentar pembuka/penutup. "
+            "HANYA teks isi ucapannya saja."
+        )
+        payload = {
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "inline_data": {
+                                "mime_type": mime_type,
+                                "data": b64_audio
+                            }
+                        },
+                        {
+                            "text": prompt
+                        }
+                    ]
+                }
+            ]
+        }
+        r = requests.post(url, headers=headers, json=payload, timeout=25)
+        if r.status_code == 200:
+            data = r.json()
+            candidates = data.get("candidates", [])
+            if candidates:
+                parts = candidates[0].get("content", {}).get("parts", [])
+                if parts:
+                    raw_text = parts[0].get("text", "").strip()
+                    raw_text = raw_text.strip('"\'\`')
+                    return raw_text
+        else:
+            logger.warning(f"Gemini Speech-to-Text error HTTP {r.status_code}: {r.text[:200]}")
+    except Exception as e:
+        logger.error(f"Transcribe audio exception: {e}")
+    return None
+
+
+def send_telegram(token, chat_id, text, parse_mode="Markdown", reply_markup=None, send_voice_also=False):
     if not text or not str(text).strip():
         return
     url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -1762,6 +1909,19 @@ def send_telegram(token, chat_id, text, parse_mode="Markdown", reply_markup=None
         requests.post(url, json=payload, timeout=8)
     except Exception as e:
         logger.error(f"Failed to send Telegram message to {chat_id}: {e}")
+        
+    # Kirim balasan suara jika diminta atau user aktif mode suara
+    if send_voice_also or is_voice_reply_active(chat_id):
+        try:
+            ogg_path = text_to_speech_ogg(text)
+            if ogg_path and os.path.exists(ogg_path):
+                try:
+                    send_telegram_voice(token, chat_id, ogg_path)
+                finally:
+                    if os.path.exists(ogg_path):
+                        os.remove(ogg_path)
+        except Exception as err_v:
+            logger.error(f"Voice reply delivery error: {err_v}")
 
 def answer_callback(token, callback_id, text, show_alert=False):
     url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
@@ -2515,9 +2675,26 @@ def process_agent_command(user_text, sender_id="admin", is_admin=True, gemini_ke
             return (None, None)
 
 
-def handle_incoming_message(token, chat_id, user_text, gemini_key, model_name):
+def handle_incoming_message(token, chat_id, user_text, gemini_key, model_name, is_voice=False):
     txt = user_text.strip()
     state = USER_STATES.get(chat_id)
+    cid_str = str(chat_id)
+
+    # Toggle Mode Suara Permanen
+    if txt.lower() in ["/voice on", "/suara on", "voice on", "suara on"]:
+        VOICE_PERSISTENT_USERS.add(cid_str)
+        send_telegram(token, chat_id, "🎙️ *Mode Suara Aktif!*\nSemua balasan bot akan dikirim dalam bentuk Teks + Pesan Suara (Voice Note).", reply_markup=get_main_menu_keyboard(), send_voice_also=True)
+        return
+
+    if txt.lower() in ["/voice off", "/suara off", "voice off", "suara off"]:
+        VOICE_PERSISTENT_USERS.discard(cid_str)
+        VOICE_SESSION_USERS.discard(cid_str)
+        send_telegram(token, chat_id, "🔇 *Mode Suara Dinonaktifkan.*\nBalasan bot kembali ke format Teks standar.", reply_markup=get_main_menu_keyboard())
+        return
+
+    # Aktifkan session suara jika request berasal dari pesan suara
+    if is_voice:
+        VOICE_SESSION_USERS.add(cid_str)
 
     # Cancel command
     if txt.lower() in ["/batal", "/cancel", "batal", "cancel"]:
@@ -5084,15 +5261,44 @@ def main():
                     chat = msg.get("chat", {})
                     sender_id = str(chat.get("id", ""))
                     text = msg.get("text", "")
+                    voice = msg.get("voice") or msg.get("audio")
                     
                     if admin_ids and not is_authorized(sender_id, admin_ids):
                         logger.warning(f"Unauthorized chat from {sender_id}: {text}")
                         send_telegram(token, sender_id, f"⛔ Akses Ditolak: ID Anda ({sender_id}) bukan Admin/Teknisi {BRAND_NAME}.")
                         continue
+                    
+                    # Handler Pesan Suara (Voice Note / Audio Telegram)
+                    if voice:
+                        file_id = voice.get("file_id")
+                        mime = voice.get("mime_type", "audio/ogg")
+                        logger.info(f"Received voice note from {sender_id}, transcribing...")
+                        audio_data = download_telegram_file(token, file_id)
+                        if audio_data:
+                            try:
+                                requests.post(f"https://api.telegram.org/bot{token}/sendChatAction", json={"chat_id": sender_id, "action": "record_voice"}, timeout=5)
+                            except Exception:
+                                pass
+                            transcribed = transcribe_audio_with_gemini(gemini_key, gemini_model, audio_data, mime_type=mime)
+                            if transcribed:
+                                logger.info(f"Voice transcribed: '{transcribed}' from {sender_id}")
+                                send_telegram(token, sender_id, f"🎙️ *Perintah Suara:*\n_{transcribed}_")
+                                try:
+                                    handle_incoming_message(token, sender_id, transcribed, gemini_key, gemini_model, is_voice=True)
+                                finally:
+                                    VOICE_SESSION_USERS.discard(str(sender_id))
+                            else:
+                                send_telegram(token, sender_id, "⚠️ Maaf, perintah suara tidak dapat dikenali atau Gemini API belum aktif.")
+                        else:
+                            send_telegram(token, sender_id, "⚠️ Gagal mengunduh file suara dari Telegram.")
+                        continue
                         
                     if text:
                         logger.info(f"Received command: '{text}' from {sender_id}")
-                        handle_incoming_message(token, sender_id, text, gemini_key, gemini_model)
+                        try:
+                            handle_incoming_message(token, sender_id, text, gemini_key, gemini_model, is_voice=False)
+                        finally:
+                            VOICE_SESSION_USERS.discard(str(sender_id))
             elif r.status_code == 409:
                 logger.warning("Telegram polling returned HTTP 409 (Conflict/Webhook). Menghapus webhook lama secara otomatis...")
                 try:
