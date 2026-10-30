@@ -4,7 +4,7 @@
 # Dikhususkan untuk Armbian / Linux SBC (STB B860H, HG680P, Orange Pi, Raspberry Pi)
 # Serta Komputer / VPS Linux Debian 11 (Bullseye) / Debian 12 (Bookworm) / Ubuntu
 # 
-# Dibuat & Dioptimasi oleh: ALIJAYA-NET (HP: 081947215703)
+# & Dioptimasi oleh: WiFilink (HP: 085174661144)
 # ==============================================================================
 
 set -e
@@ -20,11 +20,11 @@ NC='\033[0m' # No Color
 
 clear 2>/dev/null || true
 echo -e "${CYAN}╔══════════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║${BOLD}${GREEN}                    🚀 ALIJAYA NET AUTO-INSTALLER                     ${NC}${CYAN}║${NC}"
+echo -e "${CYAN}║${BOLD}${GREEN}                    🚀 GENIEACS AUTO-INSTALLER                     ${NC}${CYAN}║${NC}"
 echo -e "${CYAN}║${BOLD}${YELLOW}         GENIEACS TR-069 + MONGODB + NODE.JS v20 UNTUK ARMBIAN        ${NC}${CYAN}║${NC}"
 echo -e "${CYAN}║                                                                      ║${NC}"
-echo -e "${CYAN}║${NC}  👑 ${BOLD}Pengembang & Maintenance${NC} : ${GREEN}${BOLD}ALIJAYA NET${NC}                           ${CYAN}║${NC}"
-echo -e "${CYAN}║${NC}  📱 ${BOLD}WhatsApp / Telepon${NC}       : ${YELLOW}${BOLD}081947215703${NC} (${CYAN}0819-4721-5703${NC})         ${CYAN}║${NC}"
+echo -e "${CYAN}║${NC}  👑 ${BOLD}Pengembang & Maintenance${NC} : ${GREEN}${BOLD}WiFilinkT${NC}                           ${CYAN}║${NC}"
+echo -e "${CYAN}║${NC}  📱 ${BOLD}WhatsApp / Telepon${NC}       : ${YELLOW}${BOLD}085174661144${NC} (${CYAN}0851-7466-1144${NC})         ${CYAN}║${NC}"
 echo -e "${CYAN}║${NC}  🌐 ${BOLD}Sistem & Jaringan${NC}        : ${WHITE}Manajemen TR-069 GenieACS & RT/RW Net   ${CYAN}║${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
