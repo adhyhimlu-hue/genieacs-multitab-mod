@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==============================================================================
-# SCRIPT PENERAP TAMPILAN & FITUR INFORMATIF GENIEACS (ALIJAYA NET)
+# SCRIPT PENERAP TAMPILAN & FITUR INFORMATIF GENIEACS
 # Mengubah GenieACS standar menjadi GenieACS Informatif Multi-Tab:
 # WAN (Add WAN/PPPoE), WLAN (Multi-SSID & Client RSSI), LAN (Port LAN & Hosts),
 # USER (Web GUI Direct Link), TR-069 (CWMP Config), dan Bebas Fault.
