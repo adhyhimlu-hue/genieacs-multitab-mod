@@ -121,7 +121,7 @@ Gunakan metode ini jika server Anda **sudah memiliki GenieACS aktif dan sudah ad
 1. **Unduh Paket Template & Script Penerap**:
    ```bash
    cd /root
-   git clone https://github.com/alijayanet/genieacs-multitab-mod.git
+   git clone git@github.com:adhyhimlu-hue/genieacs-multitab-mod.git
    cd genieacs-multitab-mod
    ```
 
