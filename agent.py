@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # ==============================================================================
-# ALIJAYA NET - GenieACS AI Telegram Agent (Full Multi-Tab & Operations Mod)
-# Pengembang: ALIJAYA NET (WhatsApp: 081947215703)
+# WiFilink - GenieACS AI Telegram Agent (Full Multi-Tab & Operations Mod)
+# Copyright: WiFilink (WhatsApp: 085174661144)
 # ==============================================================================
 
 import os
@@ -159,15 +159,15 @@ def get_config():
         _RESOLVED_MONGO_URI = None
         return {}
 
-BRAND_NAME = "ALIJAYA NET"
-BRAND_PHONE = "081947215703"
+BRAND_NAME = "ALTRA.NET"
+BRAND_PHONE = "085174661144"
 
 def update_branding(cfgs):
     global BRAND_NAME, BRAND_PHONE
     b_name = cfgs.get("agent.brand.name", "").strip()
     b_phone = cfgs.get("agent.brand.phone", "").strip()
-    BRAND_NAME = b_name if b_name else "ALIJAYA NET"
-    BRAND_PHONE = b_phone if b_phone else "081947215703"
+    BRAND_NAME = b_name if b_name else "ALTRA.NET"
+    BRAND_PHONE = b_phone if b_phone else "085174661144"
 
 def is_valid_token(val):
     if not val:
