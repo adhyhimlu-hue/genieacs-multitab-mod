@@ -325,9 +325,9 @@ export function isWhatsappAdminKey(key, adminSet, sock) {
 }
 
 // Global runtime settings cache
-let cachedAdminNumbers = ['081947215703'];
-let cachedBrandName = 'ALIJAYA NET';
-let cachedBrandPhone = '081947215703';
+let cachedAdminNumbers = ['085174661144'];
+let cachedBrandName = 'WiFilink';
+let cachedBrandPhone = '085174661144';
 
 export async function fetchRemoteConfig() {
   try {
@@ -337,7 +337,7 @@ export async function fetchRemoteConfig() {
       if (data.brand_name) cachedBrandName = String(data.brand_name).trim();
       if (data.brand_phone) cachedBrandPhone = String(data.brand_phone).trim();
 
-      const rawAdmins = data.wa_admin_numbers || data.brand_phone || '081947215703';
+      const rawAdmins = data.wa_admin_numbers || data.brand_phone || '085174661144';
       const parsed = String(rawAdmins)
         .split(/[\s,;]+/)
         .map(n => n.trim().replace(/\D/g, ''))
