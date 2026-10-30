@@ -1647,7 +1647,12 @@ def ask_gemini_ai(gemini_key, model_name, user_prompt, sender_id="admin", is_adm
             return fallback_admin_intent(user_prompt)
         return None
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={gemini_key}"
+    # Normalisasi model name agar kompatibel dengan API Gemini terbaru
+    use_model = model_name or "gemini-3.5-flash"
+    if "1.5" in use_model:
+        use_model = "gemini-3.5-flash"
+    m_clean = use_model if use_model.startswith("models/") else f"models/{use_model}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/{m_clean}:generateContent?key={gemini_key}"
     headers = {"Content-Type": "application/json"}
     
     if is_admin:
@@ -1846,18 +1851,24 @@ def transcribe_audio_with_gemini(gemini_key, model_name, audio_bytes, mime_type=
     if not is_valid_token(gemini_key) or not audio_bytes:
         return None
     try:
-        # Gunakan model gemini yang support audio
-        use_model = model_name if ("flash" in model_name or "pro" in model_name) else "gemini-1.5-flash"
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{use_model}:generateContent?key={gemini_key}"
-        headers = {"Content-Type": "application/json"}
+        # Kandidat model yang valid untuk multimodal audio
+        candidate_models = []
+        if model_name and "1.5" not in model_name:
+            m_clean = model_name if model_name.startswith("models/") else f"models/{model_name}"
+            candidate_models.append(m_clean)
+        # Default model terbaru yang terbukti aktif
+        for m in ["models/gemini-3.5-flash", "models/gemini-3.8-flash", "models/gemini-2.5-flash"]:
+            if m not in candidate_models:
+                candidate_models.append(m)
+
         b64_audio = base64.b64encode(audio_bytes).decode("utf-8")
-        
+        headers = {"Content-Type": "application/json"}
         prompt = (
             "Dengarkan rekaman suara bahasa Indonesia ini dengan cermat. "
-            "Transkripsikan isi ucapannya menjadi teks kalimat perintah yang singkat, jelas, dan akurat. "
+            "Transkripsikan isi ucapannya menjadi kalimat perintah teks yang bersih, akurat, dan ringkas. "
             "Contoh jika mendengar ucapan 'cek status modem': tuliskan hanya 'cek status modem'. "
-            "JANGAN tambahkan tanda kutip, jangan ada awalan seperti 'Teks transkripsi:', atau komentar pembuka/penutup. "
-            "HANYA teks isi ucapannya saja."
+            "JANGAN tambahkan tanda kutip, jangan ada awalan seperti 'Teks transkripsi:', atau kata pengantar apapun. "
+            "Hanya teks hasil transkripsinya saja."
         )
         payload = {
             "contents": [
@@ -1870,25 +1881,32 @@ def transcribe_audio_with_gemini(gemini_key, model_name, audio_bytes, mime_type=
                                 "data": b64_audio
                             }
                         },
-                        {
-                            "text": prompt
-                        }
+                        {"text": prompt}
                     ]
                 }
             ]
         }
-        r = requests.post(url, headers=headers, json=payload, timeout=25)
-        if r.status_code == 200:
-            data = r.json()
-            candidates = data.get("candidates", [])
-            if candidates:
-                parts = candidates[0].get("content", {}).get("parts", [])
-                if parts:
-                    raw_text = parts[0].get("text", "").strip()
-                    raw_text = raw_text.strip('"\'\`')
-                    return raw_text
-        else:
-            logger.warning(f"Gemini Speech-to-Text error HTTP {r.status_code}: {r.text[:200]}")
+
+        for cm in candidate_models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/{cm}:generateContent?key={gemini_key}"
+            try:
+                r = requests.post(url, headers=headers, json=payload, timeout=25)
+                if r.status_code == 200:
+                    data = r.json()
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if parts:
+                            raw_text = parts[0].get("text", "").strip()
+                            raw_text = raw_text.strip('"\'\`').strip()
+                            if raw_text:
+                                logger.info(f"Gemini STT success with model {cm}: '{raw_text}'")
+                                return raw_text
+                else:
+                    logger.warning(f"Gemini Speech-to-Text ({cm}) error HTTP {r.status_code}: {r.text[:150]}")
+            except Exception as req_err:
+                logger.warning(f"Gemini STT request failed for {cm}: {req_err}")
+                continue
     except Exception as e:
         logger.error(f"Transcribe audio exception: {e}")
     return None
